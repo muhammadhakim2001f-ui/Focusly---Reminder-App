@@ -1,0 +1,1 @@
+const mongoose=require('mongoose'); module.exports=mongoose.model('User', new mongoose.Schema({name:String,email:String,password:String,exp:{type:Number,default:0},streak:{type:Number,default:0}}));

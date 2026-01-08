@@ -1,0 +1,1 @@
+const mongoose=require('mongoose'); module.exports=mongoose.model('Habit', new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,ref:'User'},name:String,icon:String,color:String,frequency:String,streak:{type:Number,default:0}}));

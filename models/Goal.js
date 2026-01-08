@@ -1,0 +1,1 @@
+const mongoose=require('mongoose'); module.exports=mongoose.model('Goal', new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,ref:'User'},title:String,description:String,category:String,deadline:Date,progress:{type:Number,default:0},milestones:[{text:String,completed:Boolean}]}));
