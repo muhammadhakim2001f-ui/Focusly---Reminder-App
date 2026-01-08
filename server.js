@@ -12,7 +12,11 @@ app.use(express.json());
 
 // Serving Static Files (Agar frontend terbaca di Vercel)
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// --- PERBAIKAN VERCEL ---
+// Baris ini dikomentari karena folder 'uploads' tidak bisa dibuat di Vercel.
+// Jika tidak dikomentari, server akan crash mencari folder ini.
+// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Database Connection
 const MONGO_URI = process.env.MONGO_URI;
