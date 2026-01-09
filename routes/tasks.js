@@ -3,9 +3,7 @@ const Task = require("../models/Task");
 const auth = require("../middleware/auth");
 const multer = require("multer");
 
-// --- PERBAIKAN VERCEL ---
-// Menggunakan memoryStorage (RAM) bukan diskStorage (Harddisk)
-// Vercel tidak mengizinkan pembuatan file/folder baru (mkdir).
+// Simpan di RAM agar Vercel tidak error "Read-only file system"
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
@@ -13,13 +11,15 @@ router.get("/", auth, async (req, res) => res.json(await Task.find({ user: req.u
 
 router.post("/", [auth, upload.fields([{ name: "voice" }, { name: "image" }])], async (req, res) => {
   try {
-    // Logika disesuaikan: Karena di Vercel file tidak bisa disimpan permanen (tanpa Cloudinary),
-    // kita set URL-nya jadi null atau dummy string agar tidak error "filename of undefined".
+    // Vercel Free Tier tidak bisa menyimpan file fisik.
+    // Kita simpan null agar database tidak kotor dengan link palsu.
+    // Jika user memaksa upload, backend tidak akan error, tapi file tidak tersimpan.
+
     const t = await Task.create({
       ...req.body,
       user: req.user.id,
-      voiceNoteUrl: req.files && req.files.voice ? "voice_uploaded_memory" : null,
-      imageUrl: req.files && req.files.image ? "image_uploaded_memory" : null,
+      voiceNoteUrl: null, // Fitur ini butuh Cloudinary (nanti kita bahas)
+      imageUrl: null, // Fitur ini butuh Cloudinary
     });
     res.json(t);
   } catch (err) {
@@ -29,8 +29,12 @@ router.post("/", [auth, upload.fields([{ name: "voice" }, { name: "image" }])], 
 });
 
 router.put("/:id", auth, async (req, res) => {
-  await Task.findByIdAndUpdate(req.params.id, req.body);
-  res.sendStatus(200);
+  try {
+    await Task.findByIdAndUpdate(req.params.id, req.body);
+    res.sendStatus(200);
+  } catch (err) {
+    res.status(500).json({ error: "Update failed" });
+  }
 });
 
 module.exports = router;
