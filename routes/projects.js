@@ -1,22 +1,22 @@
 const router = require("express").Router();
 const Project = require("../models/Project");
-const User = require("../models/User"); // <--- TAMBAHKAN INI (Import Model User)
+const User = require("../models/User"); // Import User agar tidak Crash
 const auth = require("../middleware/auth");
 const { sendEmail } = require("../utils/notify");
 
+// 1. GET ALL PROJECTS (Menampilkan Project user & tim)
 router.get("/", auth, async (req, res) => {
   try {
     let userEmail = req.user.email;
 
-    // --- ANTI CRASH: JIKA TOKEN LAMA (TIDAK ADA EMAIL), AMBIL DARI DB ---
+    // Fix Token Lama: Jika email di token kosong, ambil dari DB
     if (!userEmail) {
       const user = await User.findById(req.user.id);
       if (!user) return res.status(404).json({ error: "User not found" });
       userEmail = user.email;
     }
-    // --------------------------------------------------------------------
 
-    // Sekarang aman untuk dilowercase
+    // Pastikan lowercase agar cocok dengan data invite
     userEmail = userEmail.toLowerCase();
 
     const projects = await Project.find({
@@ -29,10 +29,100 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-// ... (Sisa kode router.post dll biarkan tetap sama) ...
+// 2. CREATE PROJECT (Membuat Project Baru)
 router.post("/", auth, async (req, res) => {
-  // ...
-  res.sendStatus(201);
+  try {
+    // Logic Simpan ke Database (INI YANG TADI HILANG)
+    await Project.create({
+      ...req.body,
+      createdBy: req.user.id,
+      tasks: [], // Inisialisasi array tasks kosong
+    });
+    res.sendStatus(201);
+  } catch (err) {
+    console.error("Create Project Error:", err);
+    res.status(500).json({ error: "Failed to create project" });
+  }
 });
-// ... dst
+
+// 3. INVITE MEMBER (Mengundang Teman)
+router.post("/:id/invite", auth, async (req, res) => {
+  try {
+    const p = await Project.findById(req.params.id);
+    const emailRaw = req.body.email;
+
+    if (!emailRaw) return res.status(400).json({ error: "Email required" });
+
+    const email = emailRaw.toLowerCase(); // Lowercase email
+
+    if (!p.members.includes(email)) {
+      p.members.push(email);
+      await p.save();
+
+      const link = process.env.BASE_URL || "http://localhost:5000";
+
+      // Kirim Email (Pastikan notify.js sudah benar)
+      await sendEmail(
+        email,
+        "Project Invitation",
+        `
+            <div style="text-align:center; font-family:sans-serif;">
+                <h3>You have been invited!</h3>
+                <p>User <b>${req.user.email || "A colleague"}</b> invited you to join project: <b>${p.name}</b>.</p>
+                <a href="${link}" style="background:#6C63FF; color:white; padding:12px 24px; text-decoration:none; border-radius:5px; display:inline-block; margin-top:10px;">Open Focusly</a>
+            </div>
+        `
+      );
+    }
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("Invite Error:", e);
+    res.status(500).json({ error: "Invite failed" });
+  }
+});
+
+// 4. ADD TASK (Menambah Tugas ke Project)
+router.post("/:id/task", auth, async (req, res) => {
+  try {
+    const p = await Project.findById(req.params.id);
+    if (!p) return res.status(404).json({ error: "Project not found" });
+
+    // Masukkan task baru ke array tasks
+    p.tasks.push({
+      title: req.body.title,
+      assignee: req.body.assignee,
+      deadline: req.body.deadline,
+      completed: false,
+    });
+
+    await p.save();
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("Add Task Error:", e);
+    res.status(500).json({ error: "Add task failed" });
+  }
+});
+
+// 5. TOGGLE TASK (Checklist Tugas Selesai/Belum)
+router.put("/:id/task/:idx", auth, async (req, res) => {
+  try {
+    const p = await Project.findById(req.params.id);
+    if (!p) return res.status(404).json({ error: "Project not found" });
+
+    const taskIndex = req.params.idx;
+
+    // Cek apakah task ada
+    if (!p.tasks[taskIndex]) return res.status(404).json({ error: "Task not found" });
+
+    // Ubah status completed (true <-> false)
+    p.tasks[taskIndex].completed = !p.tasks[taskIndex].completed;
+
+    await p.save();
+    res.sendStatus(200);
+  } catch (e) {
+    console.error("Toggle Task Error:", e);
+    res.status(500).json({ error: "Toggle task failed" });
+  }
+});
+
 module.exports = router;
