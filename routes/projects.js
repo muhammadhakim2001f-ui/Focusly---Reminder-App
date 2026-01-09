@@ -1,10 +1,10 @@
 const router = require("express").Router();
 const Project = require("../models/Project");
-const User = require("../models/User");
+const User = require("../models/User"); // Wajib ada untuk cari ID member lain
 const auth = require("../middleware/auth");
 const { sendEmail, notify } = require("../utils/notify");
 
-// 1. GET ALL PROJECTS
+// GET
 router.get("/", auth, async (req, res) => {
   try {
     let userEmail = req.user.email;
@@ -19,27 +19,21 @@ router.get("/", auth, async (req, res) => {
     });
     res.json(projects);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server Error Fetching Projects" });
+    res.status(500).json({ error: "Server Error" });
   }
 });
 
-// 2. CREATE PROJECT
+// POST
 router.post("/", auth, async (req, res) => {
   try {
-    await Project.create({
-      ...req.body,
-      createdBy: req.user.id,
-      tasks: [],
-    });
+    await Project.create({ ...req.body, createdBy: req.user.id, tasks: [] });
     res.sendStatus(201);
   } catch (err) {
-    console.error("Create Project Error:", err);
-    res.status(500).json({ error: "Failed to create project" });
+    res.status(500).json({ error: "Failed" });
   }
 });
 
-// 3. INVITE MEMBER
+// INVITE
 router.post("/:id/invite", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
@@ -51,75 +45,75 @@ router.post("/:id/invite", auth, async (req, res) => {
       p.members.push(email);
       await p.save();
       const link = process.env.BASE_URL || "http://localhost:5000";
-      await sendEmail(
-        email,
-        "Project Invitation",
-        `
-            <div style="text-align:center; font-family:sans-serif;">
-                <h3>You have been invited!</h3>
-                <p>User <b>${req.user.email || "A colleague"}</b> invited you to join project: <b>${p.name}</b>.</p>
-                <a href="${link}" style="background:#6C63FF; color:white; padding:12px 24px; text-decoration:none; border-radius:5px; display:inline-block; margin-top:10px;">Open Focusly</a>
-            </div>
-        `
-      );
+      await sendEmail(email, "Project Invitation", `User ${req.user.email} invited you to join ${p.name}. <a href="${link}">Open</a>`);
+
+      // Notify Member (Web)
+      const targetUser = await User.findOne({ email: email });
+      if (targetUser) {
+        await notify(targetUser._id, "Project Invitation 🤝", `You have been invited to project "${p.name}"`);
+      }
     }
     res.sendStatus(200);
   } catch (e) {
-    console.error("Invite Error:", e);
     res.status(500).json({ error: "Invite failed" });
   }
 });
 
-// 4. ADD TASK
+// ADD TASK
 router.post("/:id/task", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
-    if (!p) return res.status(404).json({ error: "Project not found" });
-    p.tasks.push({
-      title: req.body.title,
-      assignee: req.body.assignee,
-      deadline: req.body.deadline,
-      completed: false,
-    });
+    p.tasks.push({ title: req.body.title, assignee: req.body.assignee, deadline: req.body.deadline, completed: false });
     await p.save();
+
+    // Notify Assignee (Jika ada)
+    if (req.body.assignee) {
+      const assigneeEmail = req.body.assignee.toLowerCase();
+      const targetUser = await User.findOne({ email: assigneeEmail });
+      if (targetUser && targetUser._id.toString() !== req.user.id) {
+        await notify(targetUser._id, "New Task Assigned 📋", `You have a new task: "${req.body.title}" in ${p.name}`);
+      }
+    }
     res.sendStatus(200);
   } catch (e) {
-    console.error("Add Task Error:", e);
     res.status(500).json({ error: "Add task failed" });
   }
 });
 
-// 5. TOGGLE TASK + NOTIFICATION
+// TOGGLE TASK (FIX NOTIFICATION HERE)
 router.put("/:id/task/:idx", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
-    if (!p) return res.status(404).json({ error: "Project not found" });
-
     const task = p.tasks[req.params.idx];
     task.completed = !task.completed;
-
     await p.save();
 
-    // --- LOGIC NOTIFIKASI BARU ---
+    // --- FIX WEB NOTIFICATION LOGIC ---
     if (task.completed) {
-      const doerEmail = req.user.email.toLowerCase();
-      const otherMembers = p.members.filter((m) => m !== doerEmail);
+      const currentUserEmail = req.user.email.toLowerCase();
 
-      otherMembers.forEach(async (memberEmail) => {
-        // 1. Email
-        await sendEmail(memberEmail, `Project Update: ${p.name}`, `<h3>Task Completed! ✅</h3><p><b>${req.user.email}</b> completed task: <b>"${task.title}"</b> in project ${p.name}.</p>`);
+      // Filter member lain (selain diri sendiri)
+      const otherMembers = p.members.filter((m) => m !== currentUserEmail);
 
-        // 2. Web Notif
+      // Jika owner project bukan diri sendiri, tambahkan owner ke list notifikasi juga (opsional, tapi bagus)
+      // (Skip logika owner complex, fokus ke members array dulu)
+
+      // Loop untuk kirim notifikasi
+      for (const memberEmail of otherMembers) {
+        // 1. Kirim Email
+        await sendEmail(memberEmail, `Project Update: ${p.name}`, `Task "${task.title}" completed by ${req.user.email}.`);
+
+        // 2. Kirim Web Notif (Cari User ID dulu)
         const targetUser = await User.findOne({ email: memberEmail });
         if (targetUser) {
-          await notify(targetUser._id, "Project Task Done ✅", `"${task.title}" completed by ${req.user.email}`);
+          await notify(targetUser._id, "Project Task Done ✅", `"${task.title}" completed by ${currentUserEmail.split("@")[0]}`);
         }
-      });
+      }
     }
-    // ----------------------------
+    // ----------------------------------
     res.sendStatus(200);
   } catch (e) {
-    console.error("Toggle Task Error:", e);
+    console.error(e);
     res.status(500).json({ error: "Toggle task failed" });
   }
 });

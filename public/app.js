@@ -273,10 +273,14 @@ function startFocusSession(taskId) {
   AppState.timer.activeTaskId = taskId;
   renderFocusMode();
 }
+// --- FIX 1: FOCUS MODE (Tombol Reset & Exit di Fullscreen) ---
 function renderFocusMode() {
   const activeTask = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
   const isFull = !!document.fullscreenElement;
+
+  // Style container
   const containerStyle = isFull ? "display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0f172a; color:white;" : "padding: 2rem 0;";
+
   const circleColor = isFull ? "#38bdf8" : "var(--primary)";
   const textColor = isFull ? "white" : "var(--text)";
 
@@ -284,7 +288,12 @@ function renderFocusMode() {
     ${!isFull ? renderNavbar("focus") : ""}
     <div class="focus-container" style="${isFull ? "margin:0; max-width:100%;" : ""}">
         <div class="timer-card" style="${containerStyle}">
-            <h2 class="mb-4" style="text-align:center; font-size:${isFull ? "2.5rem" : "1.5rem"}; margin-bottom: 2rem;">${activeTask ? activeTask.title : "Focus Session"}</h2>
+            
+            <h2 class="mb-4" style="text-align:center; font-size:${isFull ? "2.5rem" : "1.5rem"}; margin-bottom: 2rem;">
+                ${activeTask ? activeTask.title : "Focus Session"}
+            </h2>
+            
+            <!-- Timer Circle -->
             <div class="timer-wrapper" style="position:relative; width:300px; height:300px; display:flex; justify-content:center; align-items:center; margin-bottom: 2rem;">
                 <svg class="timer-svg" style="width:300px; height:300px; transform: rotate(-90deg);">
                     <circle cx="150" cy="150" r="140" class="timer-bg" style="fill:none; stroke:${isFull ? "#334155" : "#e2e8f0"}; stroke-width:15;"></circle>
@@ -292,6 +301,8 @@ function renderFocusMode() {
                 </svg>
                 <div class="timer-text" id="tt" style="position:absolute; font-size:4rem; font-weight:bold; color:${textColor};">${formatTime(AppState.timer.timeLeft)}</div>
             </div>
+
+            <!-- Controls (Non-Fullscreen) -->
             ${
               !isFull
                 ? `
@@ -305,106 +316,99 @@ function renderFocusMode() {
             </div>`
                 : ""
             }
+
+            <!-- Action Buttons -->
             <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap">
-                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);" onclick="togF()">${
-                  AppState.timer.isRunning ? "Pause" : "Start Focus"
-                }</button>
-                <button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; background:${isFull ? "rgba(255,255,255,0.1)" : "white"}; color:${textColor}; border-color:${
-    isFull ? "white" : "#ddd"
-  }" onclick="resF()">Reset</button>
-                ${isFull ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(0,0,0,0.2)" onclick="document.exitFullscreen()">Exit Fullscreen</button>` : ""}
+                <!-- Tombol Start/Pause -->
+                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);" onclick="togF()">
+                    ${AppState.timer.isRunning ? "Pause" : "Start Focus"}
+                </button>
+                
+                <!-- Tombol Reset Logic -->
+                ${
+                  isFull
+                    ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(255,255,255,0.1)" onclick="stopAndExit()">Reset & Exit</button>`
+                    : `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; background:white; color:var(--text)" onclick="resF()">Reset</button>`
+                }
             </div>
+
         </div>
     </div>`;
   lucide.createIcons();
   updF();
 }
-function setT(m) {
-  if (!m) return;
-  AppState.timer.timeLeft = m * 60;
-  AppState.timer.totalTime = m * 60;
-  updF();
-}
-function togF() {
-  if (!AppState.timer.isRunning) {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
-    AppState.timer.isRunning = true;
-    document.getElementById("fb").textContent = "Pause";
-    document.getElementById("fb").style.background = "#ef4444";
-    AppState.timer.interval = setInterval(() => {
-      AppState.timer.timeLeft--;
-      updF();
-      if (AppState.timer.timeLeft <= 0) finishTimer();
-    }, 1000);
-  } else {
-    clearInterval(AppState.timer.interval);
-    AppState.timer.isRunning = false;
-    document.getElementById("fb").textContent = "Resume";
-    document.getElementById("fb").style.background = "var(--primary)";
-  }
-}
-function finishTimer() {
+
+// Fungsi Baru: Reset & Keluar Fullscreen Sekaligus
+function stopAndExit() {
   clearInterval(AppState.timer.interval);
-  if (AppState.timer.activeTaskId) {
-    const task = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
-    if (task && task.voiceNoteUrl) new Audio(API_URL + task.voiceNoteUrl).play();
-    else new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3").play();
-  } else new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3").play();
+  AppState.timer.isRunning = false;
+  AppState.timer.timeLeft = AppState.timer.totalTime; // Reset waktu
 
   if (document.fullscreenElement) {
     document
       .exitFullscreen()
-      .then(() => setTimeout(() => renderNormalAfterFinish(), 100))
-      .catch((err) => renderNormalAfterFinish());
+      .then(() => {
+        renderFocusMode(); // Render ulang tampilan normal setelah keluar
+      })
+      .catch((err) => {
+        console.log(err);
+        renderFocusMode();
+      });
   } else {
-    renderNormalAfterFinish();
-  }
-}
-function renderNormalAfterFinish() {
-  updateExp(50, "Focus Session", true);
-  showToast("TIME IS UP! Great Job! 🎉");
-  resF();
-  renderFocusMode();
-}
-function resF() {
-  clearInterval(AppState.timer.interval);
-  AppState.timer.isRunning = false;
-  AppState.timer.timeLeft = AppState.timer.totalTime;
-  if (document.fullscreenElement) document.exitFullscreen();
-  renderFocusMode();
-}
-function updF() {
-  if (document.getElementById("tt")) {
-    document.getElementById("tt").textContent = formatTime(AppState.timer.timeLeft);
-    const offset = 880 * (1 - AppState.timer.timeLeft / AppState.timer.totalTime);
-    if (document.getElementById("tp")) document.getElementById("tp").style.strokeDashoffset = offset;
+    renderFocusMode();
   }
 }
 
-// --- HABITS (FIXED GLITCH & UI) ---
+// --- FIX 2: HABITS (Perbaikan Rendering agar tidak hilang) ---
 function renderHabits() {
+  // Guard clause: Pastikan habits selalu array
+  const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
+
   document.getElementById("app").innerHTML = `${renderNavbar("habits")}
-    <div class="container mt-4"><div class="flex justify-between mb-4"><h2>Habits</h2><button class="btn btn-primary" onclick="openHabitModal()">+ New Habit</button></div>
-    <div class="grid-responsive">${AppState.habits
-      .map(
-        (h) => `
-        <div class="app-card">
-            <div class="flex justify-between mb-4"><div class="flex gap-3"><div style="width:40px;height:40px;background:${h.color};border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-size:1.2rem">${
-          h.icon
-        }</div><div><h4>${h.name}</h4><small>${h.frequency}</small></div></div><div style="font-weight:bold;color:var(--danger)">🔥 ${h.streak}</div></div>
-            <div class="flex justify-between">${["M", "T", "W", "T", "F", "S", "S"]
-              .map(
-                (d, i) =>
-                  `<div style="width:30px;height:30px;border-radius:8px;background:${i < h.streak % 7 ? h.color : "#f1f5f9"};color:${
-                    i < h.streak % 7 ? "white" : "#94a3b8"
-                  };display:flex;align-items:center;justify-content:center;font-size:0.75rem;cursor:pointer" onclick="checkHabit('${h._id}')">${d}</div>`
-              )
-              .join("")}</div>
-        </div>`
-      )
-      .join("")}</div></div>`;
+    <div class="container mt-4">
+        <div class="flex justify-between mb-4">
+            <h2>Habits</h2>
+            <button class="btn btn-primary" onclick="openHabitModal()">+ New Habit</button>
+        </div>
+        
+        ${
+          habitsList.length === 0
+            ? `<div class="app-card" style="text-align:center; padding:2rem; color:#94a3b8">You have no habits yet. Start a new one!</div>`
+            : `<div class="grid-responsive">
+              ${habitsList
+                .map(
+                  (h) => `
+              <div class="app-card">
+                  <div class="flex justify-between mb-4">
+                      <div class="flex gap-3">
+                          <div style="width:40px;height:40px;background:${h.color};border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-size:1.2rem">${h.icon || "💪"}</div>
+                          <div><h4>${h.name}</h4><small>${h.frequency}</small></div>
+                      </div>
+                      <div style="font-weight:bold;color:var(--danger)">🔥 ${h.streak}</div>
+                  </div>
+                  <div class="flex justify-between">
+                      ${["M", "T", "W", "T", "F", "S", "S"]
+                        .map(
+                          (d, i) => `
+                          <div style="width:30px;height:30px;border-radius:8px;background:${i < h.streak % 7 ? h.color : "#f1f5f9"};color:${
+                            i < h.streak % 7 ? "white" : "#94a3b8"
+                          };display:flex;align-items:center;justify-content:center;font-size:0.75rem;cursor:pointer" onclick="checkHabit('${h._id}')">${d}</div>
+                      `
+                        )
+                        .join("")}
+                  </div>
+              </div>`
+                )
+                .join("")}
+            </div>`
+        }
+    </div>`;
   lucide.createIcons();
 }
+
+// Pastikan fungsi ini tetap ada (tidak berubah) untuk Goals & Team
+// renderGoals...
+// renderTeam...
 
 // --- GOALS (FIXED GLITCH & ADD MILESTONE) ---
 function renderGoals() {
