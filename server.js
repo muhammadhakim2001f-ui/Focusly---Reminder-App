@@ -6,28 +6,45 @@ const path = require("path");
 
 const app = express();
 
-// Middleware
+// --- KONFIGURASI MONGODB UNTUK VERCEL ---
+// Kita simpan status koneksi di global variable agar tidak connect ulang terus
+let isConnected = false;
+
+const connectDB = async () => {
+  if (isConnected) return; // Jika sudah connect, pakai yang ada
+
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      dbName: "focusly", // Pastikan nama DB dipaksa di sini
+      bufferCommands: false, // JANGAN buffering, langsung error kalau gak connect (biar ketahuan)
+    });
+    isConnected = !!conn.connections[0].readyState;
+    console.log("MongoDB Connected to: " + conn.connection.host);
+  } catch (error) {
+    console.error("MongoDB Connection Error:", error);
+    // Jangan process.exit(1) di Vercel, nanti serverless function-nya mati total
+    throw error;
+  }
+};
+
+// --- MIDDLEWARE PENTING ---
+// Middleware ini memastikan DB connect DULUAN sebelum lanjut ke route lain
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    // Hanya cek DB kalau akses API
+    try {
+      await connectDB();
+    } catch (error) {
+      return res.status(500).json({ error: "Database Connection Failed" });
+    }
+  }
+  next();
+});
+
+// Middleware Standar
 app.use(cors());
 app.use(express.json());
-
-// Serving Static Files (Agar frontend terbaca di Vercel)
 app.use(express.static(path.join(__dirname, "public")));
-
-// --- PERBAIKAN VERCEL ---
-// Baris ini dikomentari karena folder 'uploads' tidak bisa dibuat di Vercel.
-// Jika tidak dikomentari, server akan crash mencari folder ini.
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// Database Connection
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) {
-  console.error("MONGO_URI is missing in Environment Variables!");
-} else {
-  mongoose
-    .connect(MONGO_URI)
-    .then(() => console.log("DB Connected"))
-    .catch((err) => console.error("DB Connection Error:", err));
-}
 
 // Routes
 app.use("/api/auth", require("./routes/auth"));
@@ -37,19 +54,19 @@ app.use("/api/goals", require("./routes/goals"));
 app.use("/api/projects", require("./routes/projects"));
 app.use("/api/notifications", require("./routes/notifs"));
 
-// Frontend Route (Catch-All)
-// Menggunakan path.resolve agar aman di lingkungan Serverless
+// Frontend Route
 app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "public", "index.html"));
 });
 
-// --- BAGIAN INI YANG DIUBAH UNTUK VERCEL ---
 const PORT = process.env.PORT || 5000;
 
-// Hanya jalankan app.listen jika di local (bukan di Vercel)
 if (require.main === module) {
-  app.listen(PORT, () => console.log("Server running on port " + PORT));
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    // Untuk local dev, kita connect manual di sini
+    connectDB();
+  });
 }
 
-// Wajib export app agar Vercel bisa menggunakannya
 module.exports = app;
