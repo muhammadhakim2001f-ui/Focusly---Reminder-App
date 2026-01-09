@@ -273,12 +273,11 @@ function startFocusSession(taskId) {
   AppState.timer.activeTaskId = taskId;
   renderFocusMode();
 }
-// --- FIX 1: FOCUS MODE (Tombol Reset & Exit di Fullscreen) ---
+// --- FOCUS MODE (FIX BUTTONS) ---
 function renderFocusMode() {
   const activeTask = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
   const isFull = !!document.fullscreenElement;
 
-  // Style container
   const containerStyle = isFull ? "display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0f172a; color:white;" : "padding: 2rem 0;";
 
   const circleColor = isFull ? "#38bdf8" : "var(--primary)";
@@ -293,7 +292,6 @@ function renderFocusMode() {
                 ${activeTask ? activeTask.title : "Focus Session"}
             </h2>
             
-            <!-- Timer Circle -->
             <div class="timer-wrapper" style="position:relative; width:300px; height:300px; display:flex; justify-content:center; align-items:center; margin-bottom: 2rem;">
                 <svg class="timer-svg" style="width:300px; height:300px; transform: rotate(-90deg);">
                     <circle cx="150" cy="150" r="140" class="timer-bg" style="fill:none; stroke:${isFull ? "#334155" : "#e2e8f0"}; stroke-width:15;"></circle>
@@ -310,7 +308,7 @@ function renderFocusMode() {
                 <button class="btn btn-outline btn-sm" onclick="setT(25)">25m</button>
                 <button class="btn btn-outline btn-sm" onclick="setT(5)">5m</button>
                 <div class="flex">
-                    <input type="number" id="customMin" class="input" style="width:70px;margin:0;text-align:center;border-top-right-radius:0;border-bottom-right-radius:0" placeholder="Min">
+                    <input type="number" id="customMin" class="input" style="width:70px;margin:0;text-align:center;border-top-right-radius:0;border-bottom-right-radius:0" placeholder="Min" value="30">
                     <button class="btn btn-primary btn-sm" style="border-top-left-radius:0;border-bottom-left-radius:0" onclick="setT(document.getElementById('customMin').value)">Set</button>
                 </div>
             </div>`
@@ -319,12 +317,10 @@ function renderFocusMode() {
 
             <!-- Action Buttons -->
             <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap">
-                <!-- Tombol Start/Pause -->
-                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);" onclick="togF()">
+                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px;" onclick="togF()">
                     ${AppState.timer.isRunning ? "Pause" : "Start Focus"}
                 </button>
                 
-                <!-- Tombol Reset Logic -->
                 ${
                   isFull
                     ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(255,255,255,0.1)" onclick="stopAndExit()">Reset & Exit</button>`
@@ -338,77 +334,97 @@ function renderFocusMode() {
   updF();
 }
 
-// Fungsi Baru: Reset & Keluar Fullscreen Sekaligus
-function stopAndExit() {
-  clearInterval(AppState.timer.interval);
-  AppState.timer.isRunning = false;
-  AppState.timer.timeLeft = AppState.timer.totalTime; // Reset waktu
+function setT(m) {
+  if (!m) return;
+  // Paksa jadi integer agar tidak error
+  const min = parseInt(m);
+  if (isNaN(min) || min <= 0) return alert("Please enter a valid number");
 
-  if (document.fullscreenElement) {
-    document
-      .exitFullscreen()
-      .then(() => {
-        renderFocusMode(); // Render ulang tampilan normal setelah keluar
-      })
-      .catch((err) => {
-        console.log(err);
-        renderFocusMode();
-      });
+  AppState.timer.timeLeft = min * 60;
+  AppState.timer.totalTime = min * 60;
+  AppState.timer.isRunning = false; // Stop dulu jika user set waktu baru
+  clearInterval(AppState.timer.interval);
+
+  // Reset tampilan tombol Start
+  const fb = document.getElementById("fb");
+  if (fb) {
+    fb.textContent = "Start Focus";
+    fb.style.background = "var(--primary)";
+  }
+
+  updF();
+}
+
+function togF() {
+  const fb = document.getElementById("fb");
+
+  if (!AppState.timer.isRunning) {
+    // START
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    AppState.timer.isRunning = true;
+    if (fb) {
+      fb.textContent = "Pause";
+      fb.style.background = "#ef4444";
+    }
+    AppState.timer.interval = setInterval(() => {
+      AppState.timer.timeLeft--;
+      updF();
+      if (AppState.timer.timeLeft <= 0) finishTimer();
+    }, 1000);
   } else {
-    renderFocusMode();
+    // PAUSE
+    clearInterval(AppState.timer.interval);
+    AppState.timer.isRunning = false;
+    if (fb) {
+      fb.textContent = "Resume";
+      fb.style.background = "var(--primary)";
+    }
   }
 }
 
-// --- FIX 2: HABITS (Perbaikan Rendering agar tidak hilang) ---
-function renderHabits() {
-  // Guard clause: Pastikan habits selalu array
-  const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
+// --- FIX HABIT MODAL (Ensure color/icon values are passed) ---
+function openHabitModal() {
+  const icons = ["💪", "📚", "🏃", "🧘", "💧", "💰", "🎵", "🍳", "🧹", "🚭", "🧠", "💤"];
+  const colors = ["#6366f1", "#10b981", "#ef4444", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16"];
 
-  document.getElementById("app").innerHTML = `${renderNavbar("habits")}
-    <div class="container mt-4">
-        <div class="flex justify-between mb-4">
-            <h2>Habits</h2>
-            <button class="btn btn-primary" onclick="openHabitModal()">+ New Habit</button>
-        </div>
-        
-        ${
-          habitsList.length === 0
-            ? `<div class="app-card" style="text-align:center; padding:2rem; color:#94a3b8">You have no habits yet. Start a new one!</div>`
-            : `<div class="grid-responsive">
-              ${habitsList
-                .map(
-                  (h) => `
-              <div class="app-card">
-                  <div class="flex justify-between mb-4">
-                      <div class="flex gap-3">
-                          <div style="width:40px;height:40px;background:${h.color};border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-size:1.2rem">${h.icon || "💪"}</div>
-                          <div><h4>${h.name}</h4><small>${h.frequency}</small></div>
-                      </div>
-                      <div style="font-weight:bold;color:var(--danger)">🔥 ${h.streak}</div>
-                  </div>
-                  <div class="flex justify-between">
-                      ${["M", "T", "W", "T", "F", "S", "S"]
-                        .map(
-                          (d, i) => `
-                          <div style="width:30px;height:30px;border-radius:8px;background:${i < h.streak % 7 ? h.color : "#f1f5f9"};color:${
-                            i < h.streak % 7 ? "white" : "#94a3b8"
-                          };display:flex;align-items:center;justify-content:center;font-size:0.75rem;cursor:pointer" onclick="checkHabit('${h._id}')">${d}</div>
-                      `
-                        )
-                        .join("")}
-                  </div>
-              </div>`
-                )
-                .join("")}
-            </div>`
-        }
-    </div>`;
-  lucide.createIcons();
+  document.getElementById("modal-container").innerHTML = `
+  <div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000;display:flex;justify-content:center;align-items:center">
+    <div class="app-card" style="width:450px; max-height:90vh; overflow-y:auto" onclick="event.stopPropagation()">
+        <h2 class="mb-4">New Habit</h2>
+        <!-- FIX: Pastikan input hidden memiliki ID yang benar dan script onclick mengupdate value-nya -->
+        <form onsubmit="postData('/habits', Object.fromEntries(new FormData(event.target))); event.preventDefault()">
+            <input name="name" class="input" placeholder="Habit Name (e.g., Morning Run)" required>
+            
+            <label style="font-size:0.9rem; font-weight:bold; color:#64748b; margin-bottom:5px; display:block">Pick an Icon</label>
+            <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:10px; margin-bottom:1rem; background:#f8fafc; padding:10px; border-radius:8px">
+                ${icons
+                  .map(
+                    (i) =>
+                      `<div type="button" style="cursor:pointer; font-size:1.5rem; text-align:center; padding:5px; border-radius:5px; transition:0.2s" onclick="document.getElementById('ic').value='${i}'; this.parentNode.querySelectorAll('div').forEach(d=>d.style.background='transparent'); this.style.background='#cbd5e1'">${i}</div>`
+                  )
+                  .join("")}
+            </div>
+            <input type="hidden" name="icon" id="ic" value="💪">
+            
+            <label style="font-size:0.9rem; font-weight:bold; color:#64748b; margin-bottom:5px; display:block">Pick a Color</label>
+            <div style="display:flex; gap:10px; margin-bottom:1rem; flex-wrap:wrap">
+                ${colors
+                  .map(
+                    (c) =>
+                      `<div type="button" style="width:30px; height:30px; border-radius:50%; background:${c}; cursor:pointer; border:2px solid white; box-shadow:0 0 0 2px #e2e8f0" onclick="document.getElementById('cl').value='${c}'; this.parentNode.querySelectorAll('div').forEach(d=>d.style.borderColor='white'); this.style.borderColor='black'"></div>`
+                  )
+                  .join("")}
+            </div>
+            <input type="hidden" name="color" id="cl" value="#6366f1">
+            
+            <select name="frequency" class="select"><option>Daily</option><option>Weekly</option></select>
+            
+            <button class="btn btn-primary w-full mt-4">Create Habit</button>
+            <button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button>
+        </form>
+    </div>
+  </div>`;
 }
-
-// Pastikan fungsi ini tetap ada (tidak berubah) untuk Goals & Team
-// renderGoals...
-// renderTeam...
 
 // --- GOALS (FIXED GLITCH & ADD MILESTONE) ---
 function renderGoals() {
