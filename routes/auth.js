@@ -2,28 +2,33 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Project = require("../models/Project"); // Import Project
 const { notify } = require("../utils/notify");
 
 // --- REGISTER ---
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
+    // Paksa email jadi lowercase
+    const email = req.body.email.toLowerCase();
 
-    // 1. Cek apakah email sudah ada
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
+    if (existingUser) return res.status(400).json({ error: "Email already registered" });
 
-    // 2. Hash Password & Create User
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({ name, email, password: hashedPassword });
 
-    // 3. Notifikasi (Non-blocking: jika gagal email, user tetap terdaftar)
-    try {
-      await notify(user._id, "Welcome", "Welcome to Focusly! Your productivity journey starts here.");
-    } catch (err) {
-      console.error("Email notification failed:", err.message);
+    // 1. Notifikasi Welcome Biasa
+    notify(user._id, "Welcome", "Welcome to Focusly! Your productivity journey starts here.");
+
+    // 2. LOGIKA BARU: Cek apakah email ini sudah diundang ke Project?
+    const invitedProjects = await Project.find({ members: email });
+
+    if (invitedProjects.length > 0) {
+      invitedProjects.forEach((p) => {
+        // Beri notifikasi in-app
+        notify(user._id, "New Project", `You are already a member of project: ${p.name}`);
+      });
     }
 
     res.json({ msg: "Account created successfully" });
@@ -33,20 +38,17 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-// --- LOGIN ---
+// --- LOGIN (Update sedikit untuk kirim email lowercase) ---
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = req.body.email.toLowerCase(); // Lowercase input login
+    const password = req.body.password;
     const user = await User.findOne({ email });
 
-    // Cek user & password
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ error: "Invalid credentials" });
     }
-
-    // Generate Token
-    const token = jwt.sign({ user: { id: user.id } }, "secret", { expiresIn: "7d" });
-
+    const token = jwt.sign({ user: { id: user.id, email: user.email } }, "secret", { expiresIn: "7d" }); // Tambah email di token payload
     res.json({ token, user });
   } catch (err) {
     console.error(err);
@@ -54,18 +56,14 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// --- UPDATE EXP ---
+// ... (Sisa route exp tetap sama) ...
 router.put("/exp", require("../middleware/auth"), async (req, res) => {
+  // ... kode lama ...
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: "User not found" });
-
     user.exp += req.body.amount;
     await user.save();
-
-    // Notifikasi EXP (Opsional, agar tidak spam email bisa dikomentari)
-    // notify(user._id, 'EXP Gained', `Gained ${req.body.amount} EXP`);
-
     res.json(user);
   } catch (err) {
     console.error(err);

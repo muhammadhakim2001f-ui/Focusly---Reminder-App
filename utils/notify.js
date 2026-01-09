@@ -1,4 +1,3 @@
-// utils/notify.js
 const nodemailer = require("nodemailer");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
@@ -6,16 +5,15 @@ const User = require("../models/User");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "muhammadhakim2001f@gmail.com", // Email Anda
-    pass: "pmpm vaap eofh nlnu", // App Password Anda
+    user: process.env.EMAIL_USER, // AMBIL DARI ENV
+    pass: process.env.EMAIL_PASS, // AMBIL DARI ENV
   },
 });
 
-// Fungsi Internal: Kirim Email Raw
 const sendEmail = async (to, subject, html) => {
   try {
     await transporter.sendMail({
-      from: '"Focusly App" <muhammadhakim2001f@gmail.com>',
+      from: '"Focusly App" <' + process.env.EMAIL_USER + ">",
       to,
       subject,
       html,
@@ -28,22 +26,20 @@ const sendEmail = async (to, subject, html) => {
   }
 };
 
-// Fungsi 1: Notifikasi ke User (Simpan DB + Email)
 exports.notify = async (userId, title, message) => {
   try {
     await Notification.create({ userId, title, message });
     const user = await User.findById(userId);
+    // Cek user exists agar tidak crash
     if (user && user.email) {
       await sendEmail(
         user.email,
         `Focusly: ${title}`,
-        `
-                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                    <h2 style="color: #6C63FF;">${title}</h2>
-                    <p>Hi ${user.name},</p>
-                    <p>${message}</p>
-                </div>
-            `
+        `<div style="font-family:sans-serif;padding:20px;border:1px solid #ddd;border-radius:10px;">
+            <h2 style="color:#6C63FF;">${title}</h2>
+            <p>Hi ${user.name},</p>
+            <p>${message}</p>
+         </div>`
       );
     }
   } catch (e) {
@@ -51,5 +47,4 @@ exports.notify = async (userId, title, message) => {
   }
 };
 
-// Fungsi 2: Export sendEmail agar bisa dipakai untuk Invite
 exports.sendEmail = sendEmail;

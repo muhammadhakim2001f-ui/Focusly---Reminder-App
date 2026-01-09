@@ -54,6 +54,9 @@ app.use("/api/goals", require("./routes/goals"));
 app.use("/api/projects", require("./routes/projects"));
 app.use("/api/notifications", require("./routes/notifs"));
 
+// --- TAMBAHAN BARU ---
+app.use("/api/cron", require("./routes/cron"));
+
 // Frontend Route
 app.get("*", (req, res) => {
   res.sendFile(path.resolve(__dirname, "public", "index.html"));

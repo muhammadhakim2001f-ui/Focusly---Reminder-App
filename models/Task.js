@@ -1,1 +1,15 @@
-const mongoose=require('mongoose'); module.exports=mongoose.model('Task', new mongoose.Schema({user:{type:mongoose.Schema.Types.ObjectId,ref:'User'},title:String,priority:String,date:Date,time:String,location:String,voiceNoteUrl:String,imageUrl:String,completed:{type:Boolean,default:false}}));
+const mongoose = require("mongoose");
+module.exports = mongoose.model(
+  "Task",
+  new mongoose.Schema({
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    title: String,
+    priority: String,
+    date: Date,
+    time: String,
+    location: String,
+    voiceNoteUrl: String,
+    imageUrl: String,
+    completed: { type: Boolean, default: false },
+  })
+);

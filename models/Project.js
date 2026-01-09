@@ -1,1 +1,12 @@
-const mongoose=require('mongoose'); module.exports=mongoose.model('Project', new mongoose.Schema({createdBy:{type:mongoose.Schema.Types.ObjectId,ref:'User'},name:String,description:String,color:String,members:[String],tasks:[{title:String,assignee:String,deadline:Date,completed:Boolean}]}));
+const mongoose = require("mongoose");
+module.exports = mongoose.model(
+  "Project",
+  new mongoose.Schema({
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    name: String,
+    description: String,
+    color: String,
+    members: [String],
+    tasks: [{ title: String, assignee: String, deadline: Date, completed: Boolean }],
+  })
+);

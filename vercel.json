@@ -1,15 +1,14 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
-    }
-  ],
+  "builds": [{ "src": "server.js", "use": "@vercel/node" }],
   "routes": [
+    { "src": "/api/(.*)", "dest": "/server.js" },
+    { "src": "/(.*)", "dest": "/server.js" }
+  ],
+  "crons": [
     {
-      "src": "/(.*)",
-      "dest": "server.js"
+      "path": "/api/cron/execute-job-rahasia-x9z8",
+      "schedule": "0 1 * * *"
     }
   ]
 }
