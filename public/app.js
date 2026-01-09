@@ -37,7 +37,7 @@ async function init() {
   if (AppState.token && AppState.user) {
     try {
       await fetchAllData();
-      renderDashboard(); // Default view
+      renderDashboard();
       setInterval(checkAlarms, 30000);
     } catch (e) {
       console.error(e);
@@ -64,7 +64,7 @@ async function fetchAllData() {
   }
 }
 
-// --- AUTH (Login/Signup sama seperti sebelumnya) ---
+// --- AUTH ---
 function renderLogin() {
   document.getElementById("app").innerHTML = `
     <div class="auth-wrapper">
@@ -110,6 +110,7 @@ async function auth(e, endpoint, isSignup = false) {
       body: JSON.stringify(data),
     });
     const result = await res.json();
+
     if (res.ok) {
       if (isSignup) {
         alert("Account created successfully! Please login.");
@@ -221,7 +222,6 @@ function generateCalendarHTML() {
     if (tasks.some((t) => t.priority === "high")) dots += `<div class="dot" style="background:var(--danger)"></div>`;
     if (tasks.some((t) => t.priority === "medium")) dots += `<div class="dot" style="background:var(--warning)"></div>`;
     if (tasks.some((t) => t.priority === "low")) dots += `<div class="dot" style="background:var(--success)"></div>`;
-
     const isSel = i === d.getDate();
     const isToday = new Date().toDateString() === dateStr;
     let style = isToday ? "border:2px solid var(--primary)" : "";
@@ -236,7 +236,6 @@ function renderTaskItem(t) {
         t.location
       }</a>`
     : "";
-
   return `
     <div class="app-card" style="margin-bottom:1rem">
         <div class="task-layout">
@@ -269,33 +268,34 @@ window.openLightbox = function (url) {
   document.body.appendChild(lb);
 };
 
-// --- FOCUS MODE (FIXED SYMMETRY & BUTTONS) ---
+// --- FOCUS MODE (FIXED UI & EXIT) ---
 function startFocusSession(taskId) {
   AppState.timer.activeTaskId = taskId;
   renderFocusMode();
 }
 function renderFocusMode() {
   const activeTask = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
+  const isFull = !!document.fullscreenElement;
+  const containerStyle = isFull ? "display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#0f172a; color:white;" : "padding: 2rem 0;";
+  const circleColor = isFull ? "#38bdf8" : "var(--primary)";
+  const textColor = isFull ? "white" : "var(--text)";
 
-  // Perbaikan Layout Timer
   document.getElementById("app").innerHTML = `
-    ${renderNavbar("focus")}
-    <div class="focus-container">
-        <div class="timer-card" style="${document.fullscreenElement ? "background:transparent;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh" : ""}">
-            <h2 class="mb-4" style="text-align:center; color:${document.fullscreenElement ? "white" : "var(--text)"}">${activeTask ? activeTask.title : "Focus Session"}</h2>
-            
-            <div class="timer-wrapper" style="position:relative; width:300px; height:300px; display:flex; justify-content:center; align-items:center;">
+    ${!isFull ? renderNavbar("focus") : ""}
+    <div class="focus-container" style="${isFull ? "margin:0; max-width:100%;" : ""}">
+        <div class="timer-card" style="${containerStyle}">
+            <h2 class="mb-4" style="text-align:center; font-size:${isFull ? "2.5rem" : "1.5rem"}; margin-bottom: 2rem;">${activeTask ? activeTask.title : "Focus Session"}</h2>
+            <div class="timer-wrapper" style="position:relative; width:300px; height:300px; display:flex; justify-content:center; align-items:center; margin-bottom: 2rem;">
                 <svg class="timer-svg" style="width:300px; height:300px; transform: rotate(-90deg);">
-                    <circle cx="150" cy="150" r="140" class="timer-bg" style="fill:none; stroke:#e2e8f0; stroke-width:15;"></circle>
-                    <circle cx="150" cy="150" r="140" class="timer-path" id="tp" style="fill:none; stroke:var(--primary); stroke-width:15; stroke-dasharray:880; stroke-dashoffset:0; transition:stroke-dashoffset 1s linear;"></circle>
+                    <circle cx="150" cy="150" r="140" class="timer-bg" style="fill:none; stroke:${isFull ? "#334155" : "#e2e8f0"}; stroke-width:15;"></circle>
+                    <circle cx="150" cy="150" r="140" class="timer-path" id="tp" style="fill:none; stroke:${circleColor}; stroke-width:15; stroke-dasharray:880; stroke-dashoffset:0; transition:stroke-dashoffset 1s linear; stroke-linecap:round"></circle>
                 </svg>
-                <div class="timer-text" id="tt" style="position:absolute; font-size:3.5rem; font-weight:bold; color:${document.fullscreenElement ? "white" : "var(--text)"}; text-align:center;">${formatTime(AppState.timer.timeLeft)}</div>
+                <div class="timer-text" id="tt" style="position:absolute; font-size:4rem; font-weight:bold; color:${textColor};">${formatTime(AppState.timer.timeLeft)}</div>
             </div>
-
             ${
-              !document.fullscreenElement
+              !isFull
                 ? `
-            <div class="flex justify-center gap-2 mt-8 items-center">
+            <div class="flex justify-center gap-2 mb-6 items-center">
                 <button class="btn btn-outline btn-sm" onclick="setT(25)">25m</button>
                 <button class="btn btn-outline btn-sm" onclick="setT(5)">5m</button>
                 <div class="flex">
@@ -305,10 +305,14 @@ function renderFocusMode() {
             </div>`
                 : ""
             }
-
-            <div class="controls-area flex justify-center gap-4 mt-8">
-                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem;font-size:1.2rem; min-width:150px" onclick="togF()">Start Focus</button>
-                <button class="btn btn-outline" style="padding:1rem 2rem;font-size:1.2rem; background:white; color:var(--text)" onclick="resF()">Reset</button>
+            <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap">
+                <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);" onclick="togF()">${
+                  AppState.timer.isRunning ? "Pause" : "Start Focus"
+                }</button>
+                <button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; background:${isFull ? "rgba(255,255,255,0.1)" : "white"}; color:${textColor}; border-color:${
+    isFull ? "white" : "#ddd"
+  }" onclick="resF()">Reset</button>
+                ${isFull ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(0,0,0,0.2)" onclick="document.exitFullscreen()">Exit Fullscreen</button>` : ""}
             </div>
         </div>
     </div>`;
@@ -347,12 +351,20 @@ function finishTimer() {
     else new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3").play();
   } else new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3").play();
 
-  if (document.fullscreenElement) document.exitFullscreen();
-
-  // Gunakan skipRender = true agar tidak redirect ke dashboard
+  if (document.fullscreenElement) {
+    document
+      .exitFullscreen()
+      .then(() => setTimeout(() => renderNormalAfterFinish(), 100))
+      .catch((err) => renderNormalAfterFinish());
+  } else {
+    renderNormalAfterFinish();
+  }
+}
+function renderNormalAfterFinish() {
   updateExp(50, "Focus Session", true);
   showToast("TIME IS UP! Great Job! 🎉");
   resF();
+  renderFocusMode();
 }
 function resF() {
   clearInterval(AppState.timer.interval);
@@ -369,7 +381,7 @@ function updF() {
   }
 }
 
-// --- HABITS (FIXED GLITCH) ---
+// --- HABITS (FIXED GLITCH & UI) ---
 function renderHabits() {
   document.getElementById("app").innerHTML = `${renderNavbar("habits")}
     <div class="container mt-4"><div class="flex justify-between mb-4"><h2>Habits</h2><button class="btn btn-primary" onclick="openHabitModal()">+ New Habit</button></div>
@@ -414,18 +426,16 @@ function renderGoals() {
                   }">${m.text}</span></div>`
               )
               .join("")}</div>
-            
-            <div class="flex gap-2">
-                <input id="new-ms-${g._id}" class="input" style="margin:0; padding:5px 10px; font-size:0.8rem" placeholder="New milestone...">
-                <button class="btn btn-sm btn-outline" onclick="addMilestone('${g._id}')">+</button>
-            </div>
+            <div class="flex gap-2"><input id="new-ms-${g._id}" class="input" style="margin:0; padding:5px 10px; font-size:0.8rem" placeholder="New milestone..."><button class="btn btn-sm btn-outline" onclick="addMilestone('${
+          g._id
+        }')">+</button></div>
         </div>`
       )
       .join("")}</div></div>`;
   lucide.createIcons();
 }
 
-// --- TEAM (FIXED GLITCH, ASSIGNEE, REALTIME UPDATE) ---
+// --- TEAM (FIXED LIST UI & ASSIGNEE) ---
 function renderTeam() {
   const getColor = (str) => {
     const colors = ["#e0e7ff", "#ffedd5", "#ccfbf1", "#fce7f3", "#fae8ff", "#fee2e2"];
@@ -437,59 +447,51 @@ function renderTeam() {
 
   document.getElementById("app").innerHTML = `${renderNavbar("team")}
     <div class="container mt-4">
-        <div class="flex justify-between mb-4 items-end">
-            <h2>Projects</h2>
-            <button class="btn btn-primary" onclick="openProjectModal()">+ New Project</button>
-        </div>
-        
+        <div class="flex justify-between mb-4 items-end"><h2>Projects</h2><button class="btn btn-primary" onclick="openProjectModal()">+ New Project</button></div>
         <div class="grid-responsive">
             ${AppState.projects
               .map(
                 (p) => `
-            <div class="app-card" style="border-top: 5px solid ${p.color}">
-                <div class="flex justify-between mb-2">
-                    <h3 style="font-size:1.2rem; font-weight:700">${p.name}</h3>
-                    <button class="btn btn-sm btn-outline" style="border-radius:20px; font-size:0.75rem" onclick="openInvite('${p._id}')">
-                        <i data-lucide="user-plus" size="14"></i> Invite
-                    </button>
+            <div class="app-card" style="border-top: 5px solid ${p.color}; display:flex; flex-direction:column;">
+                <div class="flex justify-between mb-4 items-start">
+                    <div><h3 style="font-size:1.3rem; font-weight:700; margin-bottom:0.2rem">${p.name}</h3><span style="font-size:0.8rem; color:var(--text-light)">${p.members.length + 1} Members</span></div>
+                    <button class="btn btn-sm btn-outline" style="border-radius:20px; font-size:0.75rem; padding: 5px 10px" onclick="openInvite('${p._id}')"><i data-lucide="user-plus" size="14"></i> Invite</button>
                 </div>
-                
-                <div class="mb-4">
-                    <p class="text-sm font-bold text-light mb-1">Members</p>
-                    <div class="member-stack">
-                        <div class="member-avatar" title="You" style="background:${p.color}; color:white; border-color:white">ME</div>
-                        ${p.members.map((m) => `<div class="member-avatar" title="${m}" style="background:${getColor(m)}">${m.substring(0, 2).toUpperCase()}</div>`).join("")}
-                    </div>
+                <div class="mb-6 flex -space-x-2 overflow-hidden">
+                    <div class="member-avatar" title="You" style="background:${p.color}; color:white; border:2px solid white; margin-right:-10px; z-index:10">ME</div>
+                    ${p.members.map((m) => `<div class="member-avatar" title="${m}" style="background:${getColor(m)}; border:2px solid white; margin-left:-5px">${m.substring(0, 2).toUpperCase()}</div>`).join("")}
                 </div>
-
-                <div class="mb-4" style="background:#f8fafc; border-radius:12px; padding:1rem; border:1px solid #f1f5f9">
-                    <div class="flex justify-between mb-2">
-                        <span class="text-sm font-bold text-light">Tasks</span>
-                        <span class="text-sm font-bold text-primary">${p.tasks.filter((t) => t.completed).length}/${p.tasks.length}</span>
-                    </div>
+                <div style="flex:1; background:#f8fafc; border-radius:12px; padding:1rem; border:1px solid #f1f5f9; margin-bottom:1rem; min-height:100px;">
+                    <div class="flex justify-between mb-3"><span class="text-sm font-bold text-light">TASKS</span><span class="text-sm font-bold text-primary">${p.tasks.filter((t) => t.completed).length}/${p.tasks.length}</span></div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
                     ${
                       p.tasks.length
                         ? p.tasks
                             .map(
                               (t, i) => `
-                        <div class="flex flex-col text-sm mb-2 p-2 bg-white rounded border">
-                            <div class="flex justify-between items-center mb-1">
-                                <div class="flex gap-2 items-center" style="overflow:hidden;">
-                                    <input type="checkbox" ${t.completed ? "checked" : ""} onchange="toggleProjectTask('${p._id}',${i})"> 
-                                    <span style="${t.completed ? "text-decoration:line-through;color:#ccc" : ""}; font-weight:600">${t.title}</span>
-                                </div>
-                                <small class="text-primary font-bold" style="font-size:0.7rem">${t.deadline ? new Date(t.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</small>
+                        <div style="background:white; padding:10px; border-radius:8px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; transition:0.2s;" class="hover:shadow-sm">
+                            <div class="flex gap-3 items-center" style="overflow:hidden; max-width:65%">
+                                <div style="cursor:pointer; color:${t.completed ? "#10b981" : "#cbd5e1"}" onclick="toggleProjectTask('${p._id}',${i})"><i data-lucide="${t.completed ? "check-circle" : "circle"}" size="18"></i></div>
+                                <span style="${t.completed ? "text-decoration:line-through;color:#94a3b8" : "color:var(--text)"}; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.title}</span>
                             </div>
-                            <div class="flex justify-between items-center pl-6">
-                                <small style="color:gray; font-size:0.75rem">👤 ${t.assignee || "Unassigned"}</small>
+                            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end">
+                                ${
+                                  t.assignee
+                                    ? `<span style="font-size:0.65rem; background:${getColor(
+                                        t.assignee
+                                      )}; padding:2px 6px; border-radius:10px; margin-bottom:2px; display:inline-block; max-width:80px; overflow:hidden; text-overflow:ellipsis;">👤 ${t.assignee}</span>`
+                                    : '<span style="font-size:0.65rem; color:#ccc">Unassigned</span>'
+                                }
+                                <span style="font-size:0.7rem; color:${t.deadline ? "var(--danger)" : "#ccc"}">${t.deadline ? new Date(t.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</span>
                             </div>
                         </div>`
                             )
                             .join("")
-                        : '<div class="text-center text-sm text-light p-2">No active tasks</div>'
+                        : '<div class="text-center text-sm text-light p-4" style="font-style:italic">No active tasks yet.</div>'
                     }
+                    </div>
                 </div>
-                <button class="btn btn-outline w-full" style="border-style:dashed; color:var(--text-light)" onclick="openAddTaskToProject('${p._id}')">+ Add Task</button>
+                <button class="btn btn-outline w-full" style="border-style:dashed; color:var(--text-light); border-width:2px" onclick="openAddTaskToProject('${p._id}')">+ Add New Task</button>
             </div>`
               )
               .join("")}
@@ -498,7 +500,7 @@ function renderTeam() {
   lucide.createIcons();
 }
 
-// --- UTILS (MODIFIED XP UPDATE) ---
+// --- UTILS ---
 function closeModal() {
   document.getElementById("modal-container").innerHTML = "";
 }
@@ -516,7 +518,7 @@ function playAudio(e, url) {
   new Audio(API_URL + url).play();
 }
 function checkAlarms() {
-  // Alarms logic
+  /* Alarm Logic */
 }
 function showToast(msg) {
   const div = document.createElement("div");
@@ -533,96 +535,158 @@ window.addMsInput = function () {
   document.getElementById("ms-container").appendChild(i);
 };
 
-// --- API ACTIONS (CORE LOGIC FIXES) ---
-
-// 1. Update Exp dengan Skip Render
+// --- API ACTIONS ---
 async function updateExp(amt, msg, skipRender = false) {
   await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: amt, msg }) });
-  // Kita fetch data baru tapi JANGAN render dashboard kalau skipRender=true
   if (!skipRender) {
     await fetchAllData();
     if (!document.fullscreenElement) renderDashboard();
   }
 }
-
 async function postData(u, d) {
   await fetch(API_URL + u, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify(d) });
   closeModal();
-  await fetchAllData(); // Refresh Data
-
-  // Render ulang halaman yang BENAR
+  await fetchAllData();
   if (u.includes("habit")) renderHabits();
   else if (u.includes("goal")) renderGoals();
   else if (u.includes("project")) renderTeam();
   else renderDashboard();
 }
-
-// 2. Logic Check Habit (Tanpa Pindah Halaman)
 async function checkHabit(id) {
-  // Optimistic UI Update (Biar cepet berubah warnanya)
   const h = AppState.habits.find((x) => x._id === id);
   if (h) h.streak++;
-  renderHabits(); // Render lokal dulu
-
+  renderHabits();
   await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
-  await updateExp(5, "Habit Check", true); // TRUE = Jangan render dashboard
-  await fetchAllData(); // Ambil data asli
-  renderHabits(); // Render ulang habits
+  await updateExp(5, "Habit Check", true);
+  await fetchAllData();
+  renderHabits();
 }
-
-// 3. Logic Toggle Task (Dashboard)
 async function toggleTask(id, s) {
   await fetch(`${API_URL}/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ completed: s }) });
-  await updateExp(s ? 10 : 0, s ? "Task Done" : "Task Undone", false); // Dashboard boleh dirender ulang
+  await updateExp(s ? 10 : 0, s ? "Task Done" : "Task Undone", false);
 }
-
-// 4. Logic Toggle Project Task (Tanpa Pindah Halaman & Realtime-ish)
 async function toggleProjectTask(pid, tidx) {
-  // Optimistic UI
   const p = AppState.projects.find((x) => x._id === pid);
   if (p && p.tasks[tidx]) p.tasks[tidx].completed = !p.tasks[tidx].completed;
   renderTeam();
-
   await fetch(`${API_URL}/projects/${pid}/task/${tidx}`, { method: "PUT", headers: { Authorization: `Bearer ${AppState.token}` } });
-  await updateExp(10, "Project Task Done", true); // TRUE = Jangan ke dashboard
+  await updateExp(10, "Project Task Done", true);
   await fetchAllData();
-  renderTeam(); // Render ulang halaman team
+  renderTeam();
 }
-
-// 5. Logic Toggle Milestone (Tanpa Pindah Halaman)
 async function toggleMilestone(gid, midx) {
-  // Optimistic UI
   const g = AppState.goals.find((x) => x._id === gid);
   if (g && g.milestones[midx]) g.milestones[midx].completed = !g.milestones[midx].completed;
   renderGoals();
-
   await fetch(`${API_URL}/goals/${gid}/milestone/${midx}`, { method: "PUT", headers: { Authorization: `Bearer ${AppState.token}` } });
-  await updateExp(10, "Milestone Reached", true); // TRUE = Jangan ke dashboard
+  await updateExp(10, "Milestone Reached", true);
   await fetchAllData();
   renderGoals();
 }
-
-// 6. Logic Add Milestone (Baru)
 async function addMilestone(gid) {
   const input = document.getElementById(`new-ms-${gid}`);
   const text = input.value;
   if (!text) return;
-
-  await fetch(`${API_URL}/goals/${gid}/milestone`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` },
-    body: JSON.stringify({ text }),
-  });
+  await fetch(`${API_URL}/goals/${gid}/milestone`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ text }) });
   input.value = "";
   await fetchAllData();
   renderGoals();
 }
 
-// --- MODALS (Fix Dropdown Assignee) ---
+// --- MODALS ---
+function openAddTaskModal() {
+  const d = new Date().toISOString().slice(0, 16);
+  document.getElementById(
+    "modal-container"
+  ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000"><div class="app-card" style="width:500px" onclick="event.stopPropagation()"><h2 class="mb-4">Add Task</h2><form onsubmit="submitTask(event)"><input class="input" name="title" placeholder="What to do?" required><div class="flex gap-2"><select name="priority" class="input"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><input type="datetime-local" name="datetime" class="input" value="${d}"></div><input class="input" name="location" placeholder="📍 Location (Google Maps Link)"><div class="mb-2"><label><input type="checkbox" onchange="document.getElementById('aud').classList.toggle('hidden')"> Voice Note</label><div id="aud" class="hidden btn btn-outline w-full" onclick="rec(this)">Record Audio</div></div><div class="mb-2"><input type="file" name="image" class="input"></div><button class="btn btn-primary w-full">Save Task</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
+}
+async function submitTask(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  if (window.ablob) fd.append("voice", window.ablob, "voice.mp3");
+  const dt = new Date(fd.get("datetime"));
+  fd.append("date", dt.toISOString());
+  fd.append("time", dt.toTimeString().slice(0, 5));
+  await fetch(API_URL + "/tasks", { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` }, body: fd });
+  window.ablob = null;
+  closeModal();
+  await fetchAllData();
+  renderDashboard();
+}
+async function rec(el) {
+  if (!mediaRecorder || mediaRecorder.state === "inactive") {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(s);
+    mediaRecorder.start();
+    audioChunks = [];
+    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      window.ablob = new Blob(audioChunks, { type: "audio/mpeg" });
+      el.textContent = "Recorded ✅";
+      el.style.borderColor = "green";
+    };
+    el.textContent = "Stop Recording ⏹";
+    el.style.borderColor = "red";
+  } else mediaRecorder.stop();
+}
+
+function openHabitModal() {
+  const icons = ["💪", "📚", "🏃", "🧘", "💧", "💰", "🎵", "🍳", "🧹", "🚭", "🧠", "💤"];
+  const colors = ["#6366f1", "#10b981", "#ef4444", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16"];
+  document.getElementById(
+    "modal-container"
+  ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000;display:flex;justify-content:center;align-items:center"><div class="app-card" style="width:450px; max-height:90vh; overflow-y:auto" onclick="event.stopPropagation()"><h2 class="mb-4">New Habit</h2><form onsubmit="postData('/habits', Object.fromEntries(new FormData(event.target))); event.preventDefault()"><input name="name" class="input" placeholder="Habit Name" required><label style="font-size:0.9rem;font-weight:bold;color:#64748b;margin-bottom:5px;display:block">Icon</label><div style="display:grid;grid-template-columns:repeat(6, 1fr);gap:10px;margin-bottom:1rem;background:#f8fafc;padding:10px;border-radius:8px">${icons
+    .map((i) => `<div style="cursor:pointer;font-size:1.5rem;text-align:center;padding:5px;border-radius:5px" onclick="document.getElementById('ic').value='${i}';this.style.background='#e2e8f0'">${i}</div>`)
+    .join(
+      ""
+    )}</div><input type="hidden" name="icon" id="ic" value="💪"><label style="font-size:0.9rem;font-weight:bold;color:#64748b;margin-bottom:5px;display:block">Color</label><div style="display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap">${colors
+    .map(
+      (c) =>
+        `<div style="width:30px;height:30px;border-radius:50%;background:${c};cursor:pointer;border:2px solid white;box-shadow:0 0 0 2px #e2e8f0" onclick="document.getElementById('cl').value='${c}';this.style.borderColor='black'"></div>`
+    )
+    .join(
+      ""
+    )}</div><input type="hidden" name="color" id="cl" value="#6366f1"><select name="frequency" class="select"><option>Daily</option><option>Weekly</option></select><button class="btn btn-primary w-full mt-4">Create Habit</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
+}
+function openGoalModal() {
+  document.getElementById(
+    "modal-container"
+  ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000"><div class="app-card" style="width:500px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><h2 class="mb-4">New Goal</h2><form onsubmit="handleGoalSubmit(event)"><input name="title" class="input" placeholder="Title" required><textarea name="description" class="textarea" placeholder="Description"></textarea><select name="category" class="select"><option>Personal</option><option>Career</option><option>Health</option></select><input type="date" name="deadline" class="input" required><label>Milestones:</label><div id="ms-container"><input class="input" name="ms[]" placeholder="Milestone 1" required></div><button type="button" class="btn btn-outline w-full mb-4" onclick="addMsInput()">+ Add Milestone</button><button class="btn btn-primary w-full">Create</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
+}
+async function handleGoalSubmit(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const ms = fd
+    .getAll("ms[]")
+    .filter((x) => x.trim() !== "")
+    .map((t) => ({ text: t, completed: false }));
+  await postData("/goals", { title: fd.get("title"), description: fd.get("description"), category: fd.get("category"), deadline: fd.get("deadline"), milestones: ms });
+}
+function openProjectModal() {
+  const colors = ["#6366f1", "#10b981", "#ef4444", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16", "#14b8a6", "#f43f5e"];
+  document.getElementById(
+    "modal-container"
+  ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000;display:flex;justify-content:center;align-items:center"><div class="app-card" style="width:400px" onclick="event.stopPropagation()"><h2 class="mb-4">New Project</h2><form onsubmit="postData('/projects',Object.fromEntries(new FormData(event.target)));event.preventDefault()"><input class="input" name="name" placeholder="Project Name" required><label style="font-size:0.9rem;font-weight:bold;color:#64748b;margin-bottom:5px;display:block">Project Color</label><div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:10px;margin-bottom:1.5rem">${colors
+    .map((c) => `<div style="width:30px;height:30px;border-radius:50%;background:${c};cursor:pointer;margin:0 auto;" onclick="document.getElementById('pc').value='${c}';this.style.transform='scale(1.2)'"></div>`)
+    .join(
+      ""
+    )}</div><input type="hidden" name="color" id="pc" value="#6366f1"><button class="btn btn-primary w-full mt-2">Create Project</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
+}
+function openInvite(pid) {
+  document.getElementById(
+    "modal-container"
+  ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000"><div class="app-card" style="width:400px" onclick="event.stopPropagation()"><h2 class="mb-4">Invite Member</h2><form onsubmit="handleInvite(event, '${pid}')"><input class="input" name="email" placeholder="Email" type="email" required><button class="btn btn-primary w-full mt-2">Invite</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
+}
+async function handleInvite(e, pid) {
+  e.preventDefault();
+  const email = new FormData(e.target).get("email");
+  await postData(`/projects/${pid}/invite`, { email: email });
+  alert("Sent!");
+  closeModal();
+}
 function openAddTaskToProject(pid) {
   const project = AppState.projects.find((p) => p._id === pid);
-  const members = project ? [AppState.user.email, ...project.members] : []; // Include diri sendiri
-
+  const members = project ? [AppState.user.email, ...project.members] : [];
   document.getElementById(
     "modal-container"
   ).innerHTML = `<div class="lightbox" style="background:rgba(0,0,0,0.5);z-index:2000"><div class="app-card" style="width:400px" onclick="event.stopPropagation()"><h2 class="mb-4">Add Project Task</h2><form onsubmit="handleProjectTaskAdd(event, '${pid}')"><input class="input" name="title" placeholder="Title" required><label>Assign To:</label><select class="select" name="assignee">${members
@@ -631,7 +695,8 @@ function openAddTaskToProject(pid) {
       ""
     )}</select><label>Deadline</label><input class="input" name="deadline" type="date"><button class="btn btn-primary w-full mt-2">Add</button><button type="button" class="btn btn-outline w-full mt-2" onclick="closeModal()">Cancel</button></form></div></div>`;
 }
-
-// ... (Fungsi modal lain openAddTaskModal, openHabitModal, dll biarkan sama, tapi pastikan fungsi 'submitTask', 'rec' dll ada di file asli Anda. Saya singkat disini untuk hemat ruang karakter, tapi JANGAN DIHAPUS dari file Anda) ...
-// Copy paste fungsi modal lain dari app.js lama Anda ke sini.
-// ...
+async function handleProjectTaskAdd(e, pid) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  await postData(`/projects/${pid}/task`, { title: fd.get("title"), assignee: fd.get("assignee"), deadline: fd.get("deadline") });
+}

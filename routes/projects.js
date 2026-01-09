@@ -1,24 +1,19 @@
 const router = require("express").Router();
 const Project = require("../models/Project");
-const User = require("../models/User"); // Import User agar tidak Crash
+const User = require("../models/User");
 const auth = require("../middleware/auth");
-const { sendEmail } = require("../utils/notify");
+const { sendEmail, notify } = require("../utils/notify");
 
-// 1. GET ALL PROJECTS (Menampilkan Project user & tim)
+// 1. GET ALL PROJECTS
 router.get("/", auth, async (req, res) => {
   try {
     let userEmail = req.user.email;
-
-    // Fix Token Lama: Jika email di token kosong, ambil dari DB
     if (!userEmail) {
       const user = await User.findById(req.user.id);
       if (!user) return res.status(404).json({ error: "User not found" });
       userEmail = user.email;
     }
-
-    // Pastikan lowercase agar cocok dengan data invite
     userEmail = userEmail.toLowerCase();
-
     const projects = await Project.find({
       $or: [{ createdBy: req.user.id }, { members: userEmail }],
     });
@@ -29,14 +24,13 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-// 2. CREATE PROJECT (Membuat Project Baru)
+// 2. CREATE PROJECT
 router.post("/", auth, async (req, res) => {
   try {
-    // Logic Simpan ke Database (INI YANG TADI HILANG)
     await Project.create({
       ...req.body,
       createdBy: req.user.id,
-      tasks: [], // Inisialisasi array tasks kosong
+      tasks: [],
     });
     res.sendStatus(201);
   } catch (err) {
@@ -45,23 +39,18 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
-// 3. INVITE MEMBER (Mengundang Teman)
+// 3. INVITE MEMBER
 router.post("/:id/invite", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
     const emailRaw = req.body.email;
-
     if (!emailRaw) return res.status(400).json({ error: "Email required" });
-
-    const email = emailRaw.toLowerCase(); // Lowercase email
+    const email = emailRaw.toLowerCase();
 
     if (!p.members.includes(email)) {
       p.members.push(email);
       await p.save();
-
       const link = process.env.BASE_URL || "http://localhost:5000";
-
-      // Kirim Email (Pastikan notify.js sudah benar)
       await sendEmail(
         email,
         "Project Invitation",
@@ -81,20 +70,17 @@ router.post("/:id/invite", auth, async (req, res) => {
   }
 });
 
-// 4. ADD TASK (Menambah Tugas ke Project)
+// 4. ADD TASK
 router.post("/:id/task", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
-
-    // Masukkan task baru ke array tasks
     p.tasks.push({
       title: req.body.title,
       assignee: req.body.assignee,
       deadline: req.body.deadline,
       completed: false,
     });
-
     await p.save();
     res.sendStatus(200);
   } catch (e) {
@@ -103,42 +89,34 @@ router.post("/:id/task", auth, async (req, res) => {
   }
 });
 
-// ... import existing ...
-
-// UPDATE: Toggle Project Task + NOTIFICATION
+// 5. TOGGLE TASK + NOTIFICATION
 router.put("/:id/task/:idx", auth, async (req, res) => {
   try {
     const p = await Project.findById(req.params.id);
     if (!p) return res.status(404).json({ error: "Project not found" });
 
-    // Toggle status
     const task = p.tasks[req.params.idx];
     task.completed = !task.completed;
 
     await p.save();
 
-    // --- LOGIC NOTIFIKASI BARU (Poin 6) ---
+    // --- LOGIC NOTIFIKASI BARU ---
     if (task.completed) {
-      // Kirim email ke semua member KECUALI yang mengerjakan
       const doerEmail = req.user.email.toLowerCase();
       const otherMembers = p.members.filter((m) => m !== doerEmail);
 
       otherMembers.forEach(async (memberEmail) => {
-        await sendEmail(
-          memberEmail,
-          `Project Update: ${p.name}`,
-          `
-                  <h3>Task Completed! ✅</h3>
-                  <p><b>${req.user.email}</b> just completed task: <b>"${task.title}"</b> in project ${p.name}.</p>
-                  <p>Great teamwork!</p>
-                  <a href="${process.env.BASE_URL}">Check Project</a>
-                  `
-        );
-        // Opsional: Buat notifikasi in-app juga (perlu logic insert ke DB Notification user lain)
+        // 1. Email
+        await sendEmail(memberEmail, `Project Update: ${p.name}`, `<h3>Task Completed! ✅</h3><p><b>${req.user.email}</b> completed task: <b>"${task.title}"</b> in project ${p.name}.</p>`);
+
+        // 2. Web Notif
+        const targetUser = await User.findOne({ email: memberEmail });
+        if (targetUser) {
+          await notify(targetUser._id, "Project Task Done ✅", `"${task.title}" completed by ${req.user.email}`);
+        }
       });
     }
-    // -------------------------------------
-
+    // ----------------------------
     res.sendStatus(200);
   } catch (e) {
     console.error("Toggle Task Error:", e);
