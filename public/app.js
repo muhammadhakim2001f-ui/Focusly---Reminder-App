@@ -3,7 +3,7 @@ let mediaRecorder;
 let audioChunks = [];
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// VARIABLE BARU: Mencegah bentrok antara klik user dan auto-sync
+// VARIABLE PENTING: Mencegah bentrok data
 let isUpdating = false;
 
 const AppState = {
@@ -52,9 +52,9 @@ async function init() {
 
       setInterval(checkAlarms, 30000);
 
-      // AUTO-SYNC LEBIH PINTAR (Fix Bug Goals & Habit Reset)
+      // AUTO-SYNC (Updated: Lebih Sopan)
       setInterval(async () => {
-        // Jangan sync jika tab tertutup ATAU user sedang melakukan aksi (isUpdating)
+        // Hanya sync jika tab aktif DAN user TIDAK sedang interaksi (update/ketik)
         if (!document.hidden && !isUpdating) {
           await fetchAllData();
           refreshCurrentView();
@@ -70,16 +70,12 @@ async function init() {
   if (window.lucide) lucide.createIcons();
 }
 
-// FUNGSI PENTING: Mencegah refresh saat mengetik (Fix Bug Goals)
 function refreshCurrentView() {
-  // 1. Jangan refresh jika Modal terbuka
   if (document.getElementById("modal-container").innerHTML !== "") return;
 
-  // 2. JANGAN REFRESH JIKA USER SEDANG MENGETIK (Solusi Bug Goals)
+  // Jangan refresh jika user sedang mengetik (Solusi Goals ketikan hilang)
   const activeTag = document.activeElement ? document.activeElement.tagName : "";
-  if (activeTag === "INPUT" || activeTag === "TEXTAREA") {
-    return; // Stop, biarkan user mengetik dulu
-  }
+  if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
 
   if (AppState.currentView === "dashboard") renderDashboard();
   else if (AppState.currentView === "habits") renderHabits();
@@ -92,11 +88,14 @@ async function fetchAllData() {
   const get = async (u) => (await fetch(API_URL + u, { headers })).json();
   try {
     const [t, h, g, p, n] = await Promise.all([get("/tasks"), get("/habits"), get("/goals"), get("/projects"), get("/notifications")]);
-    AppState.tasks = Array.isArray(t) ? t : [];
-    AppState.habits = Array.isArray(h) ? h : [];
-    AppState.goals = Array.isArray(g) ? g : [];
-    AppState.projects = Array.isArray(p) ? p : [];
-    AppState.notifications = Array.isArray(n) ? n : [];
+    // Kita update state HANYA jika tidak sedang updating manual (Double protection)
+    if (!isUpdating) {
+      AppState.tasks = Array.isArray(t) ? t : [];
+      AppState.habits = Array.isArray(h) ? h : [];
+      AppState.goals = Array.isArray(g) ? g : [];
+      AppState.projects = Array.isArray(p) ? p : [];
+      AppState.notifications = Array.isArray(n) ? n : [];
+    }
   } catch (e) {
     console.log(e);
   }
@@ -464,7 +463,7 @@ function updF() {
   }
 }
 
-// --- HABITS (OPTIMIZED FOR SYNC) ---
+// --- HABITS (OPTIMISTIC UPDATE FIX) ---
 function renderHabits() {
   AppState.currentView = "habits";
   const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
@@ -511,7 +510,7 @@ function renderHabits() {
   lucide.createIcons();
 }
 
-// --- GOALS ---
+// --- GOALS (OPTIMISTIC UPDATE FIX) ---
 function renderGoals() {
   AppState.currentView = "goals";
   const goalsList = Array.isArray(AppState.goals) ? AppState.goals : [];
@@ -656,11 +655,11 @@ window.addMsInput = function () {
   document.getElementById("ms-container").appendChild(i);
 };
 
-// --- API ACTIONS (PAUSE SYNC SAAT UPDATING) ---
+// --- API ACTIONS (ANTI-RACE CONDITION) ---
 async function updateExp(amt, msg, skipRender = false) {
-  isUpdating = true; // Stop sync
+  isUpdating = true;
   await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: amt, msg }) });
-  isUpdating = false; // Resume sync
+  isUpdating = false;
   if (!skipRender) {
     await fetchAllData();
     if (!document.fullscreenElement) refreshCurrentView();
@@ -674,17 +673,34 @@ async function postData(u, d) {
   refreshCurrentView();
   isUpdating = false;
 }
+
+// 1. FIX HABIT RESET (Optimistic Update)
 async function checkHabit(id) {
-  isUpdating = true;
+  isUpdating = true; // Stop Auto Sync
   const h = AppState.habits.find((x) => x._id === id);
-  if (h) h.streak++;
-  renderHabits(); // Optimistic
-  await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
-  await updateExp(5, "Habit Check", true);
-  await fetchAllData();
-  renderHabits();
-  isUpdating = false;
+  if (h) {
+    h.streak++;
+    renderHabits();
+  } // Tampilan berubah instan
+
+  try {
+    const res = await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
+    const updatedHabit = await res.json();
+
+    // Update data asli dengan data terbaru dari server
+    const index = AppState.habits.findIndex((x) => x._id === id);
+    if (index !== -1) AppState.habits[index] = updatedHabit;
+
+    // Update XP diam-diam
+    await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: 5, msg: "Habit Check" }) });
+  } catch (e) {
+    if (h) h.streak--;
+    renderHabits(); // Rollback jika error
+  } finally {
+    isUpdating = false; // Resume Auto Sync
+  }
 }
+
 async function toggleTask(id, s) {
   isUpdating = true;
   await fetch(`${API_URL}/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ completed: s }) });
@@ -713,16 +729,41 @@ async function toggleMilestone(gid, midx) {
   renderGoals();
   isUpdating = false;
 }
+
+// 2. FIX GOAL DELAY (Optimistic Add)
 async function addMilestone(gid) {
   isUpdating = true;
   const input = document.getElementById(`new-ms-${gid}`);
   const text = input.value;
-  if (!text) return;
-  await fetch(`${API_URL}/goals/${gid}/milestone`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ text }) });
-  input.value = "";
-  await fetchAllData();
-  renderGoals();
-  isUpdating = false;
+  if (!text) {
+    isUpdating = false;
+    return;
+  }
+
+  // Optimistic Update: Masukkan ke list lokal dulu biar cepat
+  const g = AppState.goals.find((x) => x._id === gid);
+  if (g) {
+    g.milestones.push({ text: text, completed: false });
+    // Update progress bar lokal
+    const total = g.milestones.length;
+    const done = g.milestones.filter((m) => m.completed).length;
+    g.progress = (done / total) * 100;
+    renderGoals(); // Render ulang instan
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/goals/${gid}/milestone`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ text }) });
+    const updatedGoal = await res.json();
+
+    // Sinkronkan data asli
+    const index = AppState.goals.findIndex((x) => x._id === gid);
+    if (index !== -1) AppState.goals[index] = updatedGoal;
+  } catch (e) {
+    // Error handling (jarang terjadi)
+    console.log(e);
+  } finally {
+    isUpdating = false;
+  }
 }
 
 // --- MODALS ---
