@@ -52,12 +52,13 @@ async function init() {
 
       setInterval(checkAlarms, 30000);
 
-      // AUTO-SYNC (Updated: Lebih Sopan)
+      // AUTO-SYNC (Updated: Lebih Sopan & Anti-Timpa)
       setInterval(async () => {
-        // Hanya sync jika tab aktif DAN user TIDAK sedang interaksi (update/ketik)
+        // Hanya sync jika tab aktif DAN user TIDAK sedang interaksi
         if (!document.hidden && !isUpdating) {
           await fetchAllData();
-          refreshCurrentView();
+          // Cek lagi setelah fetch selesai, apakah user mulai interaksi?
+          if (!isUpdating) refreshCurrentView();
         }
       }, 5000);
     } catch (e) {
@@ -73,7 +74,7 @@ async function init() {
 function refreshCurrentView() {
   if (document.getElementById("modal-container").innerHTML !== "") return;
 
-  // Jangan refresh jika user sedang mengetik (Solusi Goals ketikan hilang)
+  // Jangan refresh jika user sedang mengetik
   const activeTag = document.activeElement ? document.activeElement.tagName : "";
   if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
 
@@ -83,19 +84,25 @@ function refreshCurrentView() {
   else if (AppState.currentView === "team") renderTeam();
 }
 
+// --- FIX CORE: FETCH DATA ---
 async function fetchAllData() {
+  // Tambahkan timestamp (?t=...) agar browser TIDAK menyimpan cache data lama
   const headers = { Authorization: `Bearer ${AppState.token}` };
-  const get = async (u) => (await fetch(API_URL + u, { headers })).json();
+  const get = async (u) => (await fetch(API_URL + u + "?t=" + new Date().getTime(), { headers })).json();
+
   try {
     const [t, h, g, p, n] = await Promise.all([get("/tasks"), get("/habits"), get("/goals"), get("/projects"), get("/notifications")]);
-    // Kita update state HANYA jika tidak sedang updating manual (Double protection)
-    if (!isUpdating) {
-      AppState.tasks = Array.isArray(t) ? t : [];
-      AppState.habits = Array.isArray(h) ? h : [];
-      AppState.goals = Array.isArray(g) ? g : [];
-      AppState.projects = Array.isArray(p) ? p : [];
-      AppState.notifications = Array.isArray(n) ? n : [];
-    }
+
+    // --- PENJAGAAN KETAT (DOUBLE CHECK) ---
+    // Jika saat fetch selesai user tiba-tiba melakukan klik (isUpdating = true),
+    // MAKA BUANG DATA INI. Jangan dipakai update state, karena data ini sudah basi.
+    if (isUpdating) return;
+
+    AppState.tasks = Array.isArray(t) ? t : [];
+    AppState.habits = Array.isArray(h) ? h : [];
+    AppState.goals = Array.isArray(g) ? g : [];
+    AppState.projects = Array.isArray(p) ? p : [];
+    AppState.notifications = Array.isArray(n) ? n : [];
   } catch (e) {
     console.log(e);
   }
@@ -463,7 +470,7 @@ function updF() {
   }
 }
 
-// --- HABITS (OPTIMISTIC UPDATE FIX) ---
+// --- FIX 1: HABIT RESET (DENGAN BUFFER WAKTU 5 DETIK) ---
 function renderHabits() {
   AppState.currentView = "habits";
   const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
@@ -674,12 +681,11 @@ async function postData(u, d) {
   isUpdating = false;
 }
 
-// 1. FIX HABIT RESET (DENGAN BUFFER WAKTU)
+// 1. FIX HABIT RESET (DENGAN BUFFER WAKTU 5 DETIK)
 async function checkHabit(id) {
-  // 1. Stop Auto-Sync agar tidak menimpa data
-  isUpdating = true;
+  isUpdating = true; // Stop Auto Sync
 
-  // 2. Optimistic UI (Ubah tampilan duluan biar cepat)
+  // Optimistic UI
   const h = AppState.habits.find((x) => x._id === id);
   if (h) {
     h.streak++;
@@ -687,30 +693,25 @@ async function checkHabit(id) {
   }
 
   try {
-    // 3. Kirim ke Server
     const res = await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
     const updatedHabit = await res.json();
 
-    // 4. Update data lokal dengan data valid dari server
+    // Force update local data with server response
     const index = AppState.habits.findIndex((x) => x._id === id);
     if (index !== -1) AppState.habits[index] = updatedHabit;
 
-    // 5. Update XP diam-diam
-    await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: 5, msg: "Habit Check" }) });
+    // Refresh view with confirmed data
+    renderHabits();
 
-    renderHabits(); // Render ulang dengan data server yang pasti benar
+    await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: 5, msg: "Habit Check" }) });
   } catch (e) {
-    console.error("Habit Check Error", e);
-    if (h) {
-      h.streak--;
-      renderHabits();
-    } // Kembalikan angka jika server error
+    if (h) h.streak--;
+    renderHabits(); // Rollback
   } finally {
-    // 6. KUNCI RAHASIA: Tahan Auto-Sync selama 2 detik lagi
-    // Ini memberi waktu agar Database server benar-benar selesai update sebelum kita tarik data lagi
+    // Tahan Auto-Sync selama 5 detik setelah update
     setTimeout(() => {
       isUpdating = false;
-    }, 2000);
+    }, 5000);
   }
 }
 
