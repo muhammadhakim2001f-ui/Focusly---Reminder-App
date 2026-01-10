@@ -12,6 +12,7 @@ const AppState = {
   projects: [],
   notifications: [],
   selectedDate: new Date(),
+  currentView: "dashboard", // Untuk mengetahui kita sedang di halaman mana
   timer: { timeLeft: 25 * 60, totalTime: 25 * 60, isRunning: false, activeTaskId: null, interval: null },
 };
 
@@ -21,7 +22,7 @@ try {
   localStorage.clear();
 }
 
-// --- AUDIO UNLOCKER ---
+// --- AUDIO & EVENT LISTENERS ---
 function unlockAudio() {
   if (audioCtx.state === "suspended") audioCtx.resume();
   const buffer = audioCtx.createBuffer(1, 1, 22050);
@@ -30,6 +31,15 @@ function unlockAudio() {
   source.connect(audioCtx.destination);
   source.start(0);
 }
+
+// Listener: Deteksi Perubahan Fullscreen (PENTING UTK POIN 1)
+document.addEventListener("fullscreenchange", () => {
+  // Jika timer sedang aktif, render ulang agar tombol Reset muncul/hilang
+  if (AppState.timer.activeTaskId || AppState.currentView === "focus") {
+    renderFocusMode();
+  }
+});
+
 document.addEventListener("click", unlockAudio, { once: true });
 document.addEventListener("DOMContentLoaded", init);
 
@@ -38,7 +48,19 @@ async function init() {
     try {
       await fetchAllData();
       renderDashboard();
+
+      // 1. Cek Deadline Task (30 detik)
       setInterval(checkAlarms, 30000);
+
+      // 2. AUTO-SYNC REALTIME (PENTING UTK POIN 2)
+      // Cek data baru setiap 5 detik agar progress teman terlihat tanpa reload
+      setInterval(async () => {
+        if (!document.hidden) {
+          // Hanya update jika tab sedang dibuka
+          await fetchAllData();
+          refreshCurrentView(); // Update tampilan tanpa kedip
+        }
+      }, 5000);
     } catch (e) {
       console.error(e);
       logout();
@@ -47,6 +69,17 @@ async function init() {
     renderLogin();
   }
   if (window.lucide) lucide.createIcons();
+}
+
+// Fungsi bantu untuk refresh halaman aktif tanpa reload
+function refreshCurrentView() {
+  // Jangan refresh jika user sedang mengetik di modal
+  if (document.getElementById("modal-container").innerHTML !== "") return;
+
+  if (AppState.currentView === "dashboard") renderDashboard();
+  else if (AppState.currentView === "habits") renderHabits();
+  else if (AppState.currentView === "goals") renderGoals();
+  else if (AppState.currentView === "team") renderTeam();
 }
 
 async function fetchAllData() {
@@ -131,6 +164,7 @@ async function auth(e, endpoint, isSignup = false) {
 
 // --- NAVBAR ---
 function renderNavbar(act) {
+  AppState.currentView = act; // Simpan view aktif
   const unread = AppState.notifications.filter((n) => !n.read).length;
   return `<nav class="navbar"><div class="nav-container">
         <div style="font-weight:800;color:var(--primary);font-size:1.4rem">Focusly.</div>
@@ -170,6 +204,7 @@ function togNotif() {
 
 // --- DASHBOARD ---
 function renderDashboard() {
+  AppState.currentView = "dashboard";
   const todayStr = AppState.selectedDate.toDateString();
   let tasks = (AppState.tasks || []).filter((t) => t.date && new Date(t.date).toDateString() === todayStr);
   tasks.sort((a, b) => (a.completed === b.completed ? 0 : a.completed ? 1 : -1));
@@ -268,8 +303,9 @@ window.openLightbox = function (url) {
   document.body.appendChild(lb);
 };
 
-// --- FOCUS MODE (FIXED: BUTTON RESET & EXIT DI FULLSCREEN) ---
+// --- FOCUS MODE (FIXED FULLSCREEN BUTTON POIN 1) ---
 function renderFocusMode() {
+  AppState.currentView = "focus";
   const activeTask = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
   const isFull = !!document.fullscreenElement;
 
@@ -311,13 +347,12 @@ function renderFocusMode() {
             }
 
             <!-- Action Buttons -->
-            <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap; margin-top:1rem">
-                <!-- Tombol Start/Pause -->
+            <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap; align-items:center">
                 <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px;" onclick="togF()">
                     ${AppState.timer.isRunning ? "Pause" : "Start Focus"}
                 </button>
                 
-                <!-- TOMBOL RESET & EXIT (Muncul di Fullscreen dan Normal) -->
+                <!-- TOMBOL RESET & EXIT (POIN 1: Sudah ada listener fullscreenchange) -->
                 ${
                   isFull
                     ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(255,255,255,0.1); display:flex; align-items:center; gap:5px" onclick="stopAndExit()">
@@ -326,13 +361,13 @@ function renderFocusMode() {
                     : `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; background:white; color:var(--text)" onclick="resF()">Reset</button>`
                 }
             </div>
+
         </div>
     </div>`;
   lucide.createIcons();
   updF();
 }
 
-// Logic untuk Reset dan Keluar Fullscreen (Fix Poin 1)
 function stopAndExit() {
   clearInterval(AppState.timer.interval);
   AppState.timer.isRunning = false;
@@ -429,8 +464,9 @@ function updF() {
   }
 }
 
-// --- FIX 2: HABITS RENDER (Anti-Blank & Munculkan Card) ---
+// --- HABITS (Sudah Bagus - Konsisten) ---
 function renderHabits() {
+  AppState.currentView = "habits";
   const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
 
   document.getElementById("app").innerHTML = `${renderNavbar("habits")}
@@ -475,37 +511,49 @@ function renderHabits() {
   lucide.createIcons();
 }
 
-// --- GOALS ---
+// --- GOALS (EMPTY STATE POIN 3) ---
 function renderGoals() {
+  AppState.currentView = "goals";
+  const goalsList = Array.isArray(AppState.goals) ? AppState.goals : [];
+
   document.getElementById("app").innerHTML = `${renderNavbar("goals")}
-    <div class="container mt-4"><div class="flex justify-between mb-4"><h2>Goals</h2><button class="btn btn-primary" onclick="openGoalModal()">+ New Goal</button></div>
-    <div class="grid-responsive">${AppState.goals
-      .map(
-        (g) => `
-        <div class="app-card">
-            <div class="flex justify-between mb-2"><h4>${g.title}</h4><span class="text-sm bg-gray-100 p-1 rounded font-bold" style="color:var(--primary)">${g.category}</span></div>
-            <p class="text-sm text-light mb-4">${g.description || ""}</p>
-            <div class="flex justify-between text-sm font-bold mb-1"><span>Progress</span><span>${Math.round(g.progress)}%</span></div>
-            <div style="background:#f1f5f9;height:8px;border-radius:4px;overflow:hidden;margin-bottom:1rem"><div style="width:${g.progress}%;height:100%;background:var(--primary)"></div></div>
-            <div class="mb-4">${g.milestones
-              .map(
-                (m, i) =>
-                  `<div class="flex gap-2 mb-2 text-sm items-center"><input type="checkbox" ${m.completed ? "checked" : ""} onchange="toggleMilestone('${g._id}',${i})"> <span style="${
-                    m.completed ? "text-decoration:line-through;color:#94a3b8" : ""
-                  }">${m.text}</span></div>`
-              )
-              .join("")}</div>
-            <div class="flex gap-2"><input id="new-ms-${g._id}" class="input" style="margin:0; padding:5px 10px; font-size:0.8rem" placeholder="New milestone..."><button class="btn btn-sm btn-outline" onclick="addMilestone('${
-          g._id
-        }')">+</button></div>
-        </div>`
-      )
-      .join("")}</div></div>`;
+    <div class="container mt-4">
+        <div class="flex justify-between mb-4"><h2>Goals</h2><button class="btn btn-primary" onclick="openGoalModal()">+ New Goal</button></div>
+        ${
+          goalsList.length === 0
+            ? `<div class="app-card" style="text-align:center; padding:2rem; color:#94a3b8">You have no goals yet. Set a high target! 🎯</div>`
+            : `<div class="grid-responsive">${goalsList
+                .map(
+                  (g) => `
+                <div class="app-card">
+                    <div class="flex justify-between mb-2"><h4>${g.title}</h4><span class="text-sm bg-gray-100 p-1 rounded font-bold" style="color:var(--primary)">${g.category}</span></div>
+                    <p class="text-sm text-light mb-4">${g.description || ""}</p>
+                    <div class="flex justify-between text-sm font-bold mb-1"><span>Progress</span><span>${Math.round(g.progress)}%</span></div>
+                    <div style="background:#f1f5f9;height:8px;border-radius:4px;overflow:hidden;margin-bottom:1rem"><div style="width:${g.progress}%;height:100%;background:var(--primary)"></div></div>
+                    <div class="mb-4">${g.milestones
+                      .map(
+                        (m, i) =>
+                          `<div class="flex gap-2 mb-2 text-sm items-center"><input type="checkbox" ${m.completed ? "checked" : ""} onchange="toggleMilestone('${g._id}',${i})"> <span style="${
+                            m.completed ? "text-decoration:line-through;color:#94a3b8" : ""
+                          }">${m.text}</span></div>`
+                      )
+                      .join("")}</div>
+                    <div class="flex gap-2"><input id="new-ms-${g._id}" class="input" style="margin:0; padding:5px 10px; font-size:0.8rem" placeholder="New milestone..."><button class="btn btn-sm btn-outline" onclick="addMilestone('${
+                    g._id
+                  }')">+</button></div>
+                </div>`
+                )
+                .join("")}</div>`
+        }
+    </div>`;
   lucide.createIcons();
 }
 
-// --- TEAM ---
+// --- TEAM (EMPTY STATE POIN 3) ---
 function renderTeam() {
+  AppState.currentView = "team";
+  const projectsList = Array.isArray(AppState.projects) ? AppState.projects : [];
+
   const getColor = (str) => {
     const colors = ["#e0e7ff", "#ffedd5", "#ccfbf1", "#fce7f3", "#fae8ff", "#fee2e2"];
     let hash = 0;
@@ -517,8 +565,11 @@ function renderTeam() {
   document.getElementById("app").innerHTML = `${renderNavbar("team")}
     <div class="container mt-4">
         <div class="flex justify-between mb-4 items-end"><h2>Projects</h2><button class="btn btn-primary" onclick="openProjectModal()">+ New Project</button></div>
-        <div class="grid-responsive">
-            ${AppState.projects
+        ${
+          projectsList.length === 0
+            ? `<div class="app-card" style="text-align:center; padding:2rem; color:#94a3b8">You have no projects yet. Create one and invite your team! 🚀</div>`
+            : `<div class="grid-responsive">
+            ${projectsList
               .map(
                 (p) => `
             <div class="app-card" style="border-top: 5px solid ${p.color}; display:flex; flex-direction:column;">
@@ -564,7 +615,8 @@ function renderTeam() {
             </div>`
               )
               .join("")}
-        </div>
+        </div>`
+        }
     </div>`;
   lucide.createIcons();
 }
@@ -609,17 +661,14 @@ async function updateExp(amt, msg, skipRender = false) {
   await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: amt, msg }) });
   if (!skipRender) {
     await fetchAllData();
-    if (!document.fullscreenElement) renderDashboard();
+    if (!document.fullscreenElement) refreshCurrentView();
   }
 }
 async function postData(u, d) {
   await fetch(API_URL + u, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify(d) });
   closeModal();
   await fetchAllData();
-  if (u.includes("habit")) renderHabits();
-  else if (u.includes("goal")) renderGoals();
-  else if (u.includes("project")) renderTeam();
-  else renderDashboard();
+  refreshCurrentView();
 }
 async function checkHabit(id) {
   const h = AppState.habits.find((x) => x._id === id);
