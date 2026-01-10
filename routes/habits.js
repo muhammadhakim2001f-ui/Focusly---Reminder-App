@@ -3,21 +3,24 @@ const Habit = require("../models/Habit");
 const auth = require("../middleware/auth");
 const { notify, sendEmail } = require("../utils/notify");
 
-// PENTING: Menggunakan 'userId' agar konsisten dengan Goals
+// Get Habits (Pastikan menggunakan field 'user' yang konsisten dengan task)
 router.get("/", auth, async (req, res) => {
   try {
-    const habits = await Habit.find({ userId: req.user.id });
+    const habits = await Habit.find({ user: req.user.id });
     res.json(habits);
   } catch (e) {
+    console.error("Get Habits Error:", e);
     res.status(500).json({ error: "Fetch Error" });
   }
 });
 
+// Create Habit
 router.post("/", auth, async (req, res) => {
   try {
+    // Kita gunakan 'user' sesuai konsistensi Task
     const h = await Habit.create({
       ...req.body,
-      userId: req.user.id, // GANTI DARI 'user' KE 'userId'
+      user: req.user.id,
       streak: 0,
       lastChecked: null,
     });
@@ -28,6 +31,7 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
+// Check Habit
 router.post("/:id/check", auth, async (req, res) => {
   try {
     const h = await Habit.findById(req.params.id);
@@ -42,19 +46,15 @@ router.post("/:id/check", auth, async (req, res) => {
       await h.save();
 
       // Web Notif
-      await notify(req.user.id, "Habit Checked! 🔥", `Streak: ${h.streak} days on "${h.name}"`);
-
-      // Email Milestone
-      if ([7, 30, 100].includes(h.streak)) {
-        const User = require("../models/User");
-        const user = await User.findById(req.user.id);
-        if (user && user.email) {
-          await sendEmail(user.email, "🔥 Habit Streak on Fire!", `<h3>You reached a ${h.streak}-day streak on ${h.name}!</h3>`);
-        }
+      try {
+        await notify(req.user.id, "Habit Checked! 🔥", `Streak: ${h.streak} days on "${h.name}"`);
+      } catch (err) {
+        console.error("Notif Error", err);
       }
     }
     res.json(h);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Check failed" });
   }
 });
