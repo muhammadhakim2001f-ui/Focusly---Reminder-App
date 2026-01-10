@@ -674,30 +674,43 @@ async function postData(u, d) {
   isUpdating = false;
 }
 
-// 1. FIX HABIT RESET (Optimistic Update)
+// 1. FIX HABIT RESET (DENGAN BUFFER WAKTU)
 async function checkHabit(id) {
-  isUpdating = true; // Stop Auto Sync
+  // 1. Stop Auto-Sync agar tidak menimpa data
+  isUpdating = true;
+
+  // 2. Optimistic UI (Ubah tampilan duluan biar cepat)
   const h = AppState.habits.find((x) => x._id === id);
   if (h) {
     h.streak++;
     renderHabits();
-  } // Tampilan berubah instan
+  }
 
   try {
+    // 3. Kirim ke Server
     const res = await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
     const updatedHabit = await res.json();
 
-    // Update data asli dengan data terbaru dari server
+    // 4. Update data lokal dengan data valid dari server
     const index = AppState.habits.findIndex((x) => x._id === id);
     if (index !== -1) AppState.habits[index] = updatedHabit;
 
-    // Update XP diam-diam
+    // 5. Update XP diam-diam
     await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: 5, msg: "Habit Check" }) });
+
+    renderHabits(); // Render ulang dengan data server yang pasti benar
   } catch (e) {
-    if (h) h.streak--;
-    renderHabits(); // Rollback jika error
+    console.error("Habit Check Error", e);
+    if (h) {
+      h.streak--;
+      renderHabits();
+    } // Kembalikan angka jika server error
   } finally {
-    isUpdating = false; // Resume Auto Sync
+    // 6. KUNCI RAHASIA: Tahan Auto-Sync selama 2 detik lagi
+    // Ini memberi waktu agar Database server benar-benar selesai update sebelum kita tarik data lagi
+    setTimeout(() => {
+      isUpdating = false;
+    }, 2000);
   }
 }
 
