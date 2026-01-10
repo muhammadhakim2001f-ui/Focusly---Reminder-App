@@ -3,6 +3,9 @@ let mediaRecorder;
 let audioChunks = [];
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+// VARIABLE BARU: Mencegah bentrok antara klik user dan auto-sync
+let isUpdating = false;
+
 const AppState = {
   token: localStorage.getItem("token"),
   user: null,
@@ -12,7 +15,7 @@ const AppState = {
   projects: [],
   notifications: [],
   selectedDate: new Date(),
-  currentView: "dashboard", // Untuk mengetahui kita sedang di halaman mana
+  currentView: "dashboard",
   timer: { timeLeft: 25 * 60, totalTime: 25 * 60, isRunning: false, activeTaskId: null, interval: null },
 };
 
@@ -32,9 +35,7 @@ function unlockAudio() {
   source.start(0);
 }
 
-// Listener: Deteksi Perubahan Fullscreen (PENTING UTK POIN 1)
 document.addEventListener("fullscreenchange", () => {
-  // Jika timer sedang aktif, render ulang agar tombol Reset muncul/hilang
   if (AppState.timer.activeTaskId || AppState.currentView === "focus") {
     renderFocusMode();
   }
@@ -49,16 +50,14 @@ async function init() {
       await fetchAllData();
       renderDashboard();
 
-      // 1. Cek Deadline Task (30 detik)
       setInterval(checkAlarms, 30000);
 
-      // 2. AUTO-SYNC REALTIME (PENTING UTK POIN 2)
-      // Cek data baru setiap 5 detik agar progress teman terlihat tanpa reload
+      // AUTO-SYNC LEBIH PINTAR (Fix Bug Goals & Habit Reset)
       setInterval(async () => {
-        if (!document.hidden) {
-          // Hanya update jika tab sedang dibuka
+        // Jangan sync jika tab tertutup ATAU user sedang melakukan aksi (isUpdating)
+        if (!document.hidden && !isUpdating) {
           await fetchAllData();
-          refreshCurrentView(); // Update tampilan tanpa kedip
+          refreshCurrentView();
         }
       }, 5000);
     } catch (e) {
@@ -71,10 +70,16 @@ async function init() {
   if (window.lucide) lucide.createIcons();
 }
 
-// Fungsi bantu untuk refresh halaman aktif tanpa reload
+// FUNGSI PENTING: Mencegah refresh saat mengetik (Fix Bug Goals)
 function refreshCurrentView() {
-  // Jangan refresh jika user sedang mengetik di modal
+  // 1. Jangan refresh jika Modal terbuka
   if (document.getElementById("modal-container").innerHTML !== "") return;
+
+  // 2. JANGAN REFRESH JIKA USER SEDANG MENGETIK (Solusi Bug Goals)
+  const activeTag = document.activeElement ? document.activeElement.tagName : "";
+  if (activeTag === "INPUT" || activeTag === "TEXTAREA") {
+    return; // Stop, biarkan user mengetik dulu
+  }
 
   if (AppState.currentView === "dashboard") renderDashboard();
   else if (AppState.currentView === "habits") renderHabits();
@@ -164,7 +169,7 @@ async function auth(e, endpoint, isSignup = false) {
 
 // --- NAVBAR ---
 function renderNavbar(act) {
-  AppState.currentView = act; // Simpan view aktif
+  AppState.currentView = act;
   const unread = AppState.notifications.filter((n) => !n.read).length;
   return `<nav class="navbar"><div class="nav-container">
         <div style="font-weight:800;color:var(--primary);font-size:1.4rem">Focusly.</div>
@@ -294,7 +299,6 @@ function renderTaskItem(t) {
     </div>`;
 }
 
-// --- LIGHTBOX ---
 window.openLightbox = function (url) {
   const lb = document.createElement("div");
   lb.className = "lightbox";
@@ -303,7 +307,7 @@ window.openLightbox = function (url) {
   document.body.appendChild(lb);
 };
 
-// --- FOCUS MODE (FIXED FULLSCREEN BUTTON POIN 1) ---
+// --- FOCUS MODE ---
 function renderFocusMode() {
   AppState.currentView = "focus";
   const activeTask = AppState.tasks.find((t) => t._id === AppState.timer.activeTaskId);
@@ -331,7 +335,6 @@ function renderFocusMode() {
                 <div class="timer-text" id="tt" style="position:absolute; font-size:4rem; font-weight:bold; color:${textColor};">${formatTime(AppState.timer.timeLeft)}</div>
             </div>
 
-            <!-- Controls (Non-Fullscreen) -->
             ${
               !isFull
                 ? `
@@ -346,13 +349,11 @@ function renderFocusMode() {
                 : ""
             }
 
-            <!-- Action Buttons -->
             <div class="controls-area flex justify-center gap-4" style="flex-wrap:wrap; align-items:center">
                 <button id="fb" class="btn btn-primary" style="padding:1rem 3rem; font-size:1.2rem; min-width:160px;" onclick="togF()">
                     ${AppState.timer.isRunning ? "Pause" : "Start Focus"}
                 </button>
                 
-                <!-- TOMBOL RESET & EXIT (POIN 1: Sudah ada listener fullscreenchange) -->
                 ${
                   isFull
                     ? `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; border-color:#ef4444; color:#ef4444; background:rgba(255,255,255,0.1); display:flex; align-items:center; gap:5px" onclick="stopAndExit()">
@@ -361,7 +362,6 @@ function renderFocusMode() {
                     : `<button class="btn btn-outline" style="padding:1rem 2rem; font-size:1.2rem; background:white; color:var(--text)" onclick="resF()">Reset</button>`
                 }
             </div>
-
         </div>
     </div>`;
   lucide.createIcons();
@@ -464,7 +464,7 @@ function updF() {
   }
 }
 
-// --- HABITS (Sudah Bagus - Konsisten) ---
+// --- HABITS (OPTIMIZED FOR SYNC) ---
 function renderHabits() {
   AppState.currentView = "habits";
   const habitsList = Array.isArray(AppState.habits) ? AppState.habits : [];
@@ -511,7 +511,7 @@ function renderHabits() {
   lucide.createIcons();
 }
 
-// --- GOALS (EMPTY STATE POIN 3) ---
+// --- GOALS ---
 function renderGoals() {
   AppState.currentView = "goals";
   const goalsList = Array.isArray(AppState.goals) ? AppState.goals : [];
@@ -549,7 +549,7 @@ function renderGoals() {
   lucide.createIcons();
 }
 
-// --- TEAM (EMPTY STATE POIN 3) ---
+// --- TEAM ---
 function renderTeam() {
   AppState.currentView = "team";
   const projectsList = Array.isArray(AppState.projects) ? AppState.projects : [];
@@ -656,34 +656,43 @@ window.addMsInput = function () {
   document.getElementById("ms-container").appendChild(i);
 };
 
-// --- API ACTIONS ---
+// --- API ACTIONS (PAUSE SYNC SAAT UPDATING) ---
 async function updateExp(amt, msg, skipRender = false) {
+  isUpdating = true; // Stop sync
   await fetch(API_URL + "/auth/exp", { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ amount: amt, msg }) });
+  isUpdating = false; // Resume sync
   if (!skipRender) {
     await fetchAllData();
     if (!document.fullscreenElement) refreshCurrentView();
   }
 }
 async function postData(u, d) {
+  isUpdating = true;
   await fetch(API_URL + u, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify(d) });
   closeModal();
   await fetchAllData();
   refreshCurrentView();
+  isUpdating = false;
 }
 async function checkHabit(id) {
+  isUpdating = true;
   const h = AppState.habits.find((x) => x._id === id);
   if (h) h.streak++;
-  renderHabits();
+  renderHabits(); // Optimistic
   await fetch(`${API_URL}/habits/${id}/check`, { method: "POST", headers: { Authorization: `Bearer ${AppState.token}` } });
   await updateExp(5, "Habit Check", true);
   await fetchAllData();
   renderHabits();
+  isUpdating = false;
 }
 async function toggleTask(id, s) {
+  isUpdating = true;
   await fetch(`${API_URL}/tasks/${id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${AppState.token}` }, body: JSON.stringify({ completed: s }) });
   await updateExp(s ? 10 : 0, s ? "Task Done" : "Task Undone", false);
+  isUpdating = false;
 }
 async function toggleProjectTask(pid, tidx) {
+  isUpdating = true;
   const p = AppState.projects.find((x) => x._id === pid);
   if (p && p.tasks[tidx]) p.tasks[tidx].completed = !p.tasks[tidx].completed;
   renderTeam();
@@ -691,8 +700,10 @@ async function toggleProjectTask(pid, tidx) {
   await updateExp(10, "Project Task Done", true);
   await fetchAllData();
   renderTeam();
+  isUpdating = false;
 }
 async function toggleMilestone(gid, midx) {
+  isUpdating = true;
   const g = AppState.goals.find((x) => x._id === gid);
   if (g && g.milestones[midx]) g.milestones[midx].completed = !g.milestones[midx].completed;
   renderGoals();
@@ -700,8 +711,10 @@ async function toggleMilestone(gid, midx) {
   await updateExp(10, "Milestone Reached", true);
   await fetchAllData();
   renderGoals();
+  isUpdating = false;
 }
 async function addMilestone(gid) {
+  isUpdating = true;
   const input = document.getElementById(`new-ms-${gid}`);
   const text = input.value;
   if (!text) return;
@@ -709,6 +722,7 @@ async function addMilestone(gid) {
   input.value = "";
   await fetchAllData();
   renderGoals();
+  isUpdating = false;
 }
 
 // --- MODALS ---
